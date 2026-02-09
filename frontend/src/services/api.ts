@@ -788,6 +788,28 @@ export const apiService = {
     const response = await api.get(`/control-acceso/auditoria?limit=${limit}&offset=${offset}`);
     return response.data;
   },
+
+  // ========================
+  // 🆘 EMERGENCY FIX - Permisos
+  // ========================
+
+  /**
+   * Verificar el estado de permisos del usuario actual
+   * Útil para diagnosticar problemas de acceso
+   */
+  async checkPermisos(): Promise<any> {
+    const response = await api.get('/emergency/check-permisos');
+    return response.data;
+  },
+
+  /**
+   * Asignar todos los permisos al rol del usuario si no tiene ninguno
+   * Solo usar en caso de emergencia cuando el header no muestra opciones
+   */
+  async fixPermisos(): Promise<any> {
+    const response = await api.post('/emergency/fix-permisos');
+    return response.data;
+  },
 };
 
 export default apiService;
