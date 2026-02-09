@@ -116,12 +116,6 @@ export const apiService = {
     return response.data;
   },
 
-  // Onboarding
-  async registrarEmpresa(datos: any): Promise<any> {
-    const response = await api.post('/onboarding/empresa', datos);
-    return response.data;
-  },
-
   async deleteMesa(id: string): Promise<void> {
     await api.delete(`/mesas/${id}`);
   },
@@ -786,28 +780,6 @@ export const apiService = {
 
   async getAuditoriaAcceso(limit: number = 50, offset: number = 0): Promise<any> {
     const response = await api.get(`/control-acceso/auditoria?limit=${limit}&offset=${offset}`);
-    return response.data;
-  },
-
-  // ========================
-  // 🆘 EMERGENCY FIX - Permisos
-  // ========================
-
-  /**
-   * Verificar el estado de permisos del usuario actual
-   * Útil para diagnosticar problemas de acceso
-   */
-  async checkPermisos(): Promise<any> {
-    const response = await api.get('/emergency/check-permisos');
-    return response.data;
-  },
-
-  /**
-   * Asignar todos los permisos al rol del usuario si no tiene ninguno
-   * Solo usar en caso de emergencia cuando el header no muestra opciones
-   */
-  async fixPermisos(): Promise<any> {
-    const response = await api.post('/emergency/fix-permisos');
     return response.data;
   },
 };

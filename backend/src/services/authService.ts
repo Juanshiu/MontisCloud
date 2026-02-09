@@ -9,6 +9,18 @@ const usuarioRepository = new UsuarioRepository();
 const empresaRepository = new EmpresaRepository();
 const controlAccesoService = new ControlAccesoService();
 
+// Permisos base del sistema (sync con onboardingService)
+const PERMISOS_SISTEMA = [
+  { clave: 'crear_comandas', nombre: 'Crear Comandas', descripcion: 'Permite tomar pedidos' },
+  { clave: 'gestionar_caja', nombre: 'Gestionar Caja', descripcion: 'Procesar pagos y cierres' },
+  { clave: 'ver_reportes', nombre: 'Ver Reportes', descripcion: 'Acceso a estadísticas' },
+  { clave: 'ver_historial', nombre: 'Ver Historial', descripcion: 'Ver comandas pasadas' },
+  { clave: 'gestion_menu', nombre: 'Gestionar Menú', descripcion: 'Editar productos y precios' },
+  { clave: 'gestion_espacios', nombre: 'Gestionar Espacios', descripcion: 'Administrar mesas y salones' },
+  { clave: 'gestionar_sistema', nombre: 'Configuración Sistema', descripcion: 'Ajustes generales' },
+  { clave: 'nomina.gestion', nombre: 'Gestión Nómina', descripcion: 'Administrar sueldos y contratos' }
+];
+
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-dev-key';
 const JWT_EXPIRES_IN = '12h';
 
@@ -190,7 +202,7 @@ export class AuthService {
       .executeTakeFirst();
 
     // 6. Obtener permisos
-    const permisosData = await db
+    let permisosData = await db
       .selectFrom('permisos_rol')
       .innerJoin('permisos', 'permisos.id', 'permisos_rol.permiso_id')
       .select('permisos.clave')
@@ -198,7 +210,53 @@ export class AuthService {
       .where('permisos_rol.empresa_id', '=', empresaId)
       .execute();
     
-    const permisosList = permisosData.map(p => p.clave);
+    let permisosList = permisosData.map(p => p.clave);
+
+    // 6.5. AUTO-REPARACIÓN: Si un Administrador no tiene permisos, asignarlos automáticamente
+    if (permisosList.length === 0 && esAdmin && empleado.rol_id) {
+      console.warn(`⚠️ [AUTH] Administrador sin permisos detectado: ${empleado.email}. Iniciando auto-reparación...`);
+      
+      try {
+        // Verificar si la tabla permisos está vacía
+        let todosLosPermisos = await db.selectFrom('permisos').select(['id', 'clave']).execute();
+        
+        // Si está vacía, crear permisos base
+        if (todosLosPermisos.length === 0) {
+          console.log('⚠️ [AUTH] Tabla permisos vacía. Creando permisos base...');
+          for (const p of PERMISOS_SISTEMA) {
+            await db.insertInto('permisos').values(p).execute();
+          }
+          todosLosPermisos = await db.selectFrom('permisos').select(['id', 'clave']).execute();
+          console.log(`✅ [AUTH] Creados ${todosLosPermisos.length} permisos base`);
+        }
+        
+        // Asignar todos los permisos al rol del administrador
+        if (todosLosPermisos.length > 0) {
+          const permisosRolData = todosLosPermisos.map(p => ({
+            rol_id: empleado.rol_id!,
+            permiso_id: p.id,
+            empresa_id: empresaId
+          }));
+          
+          await db.insertInto('permisos_rol').values(permisosRolData).execute();
+          console.log(`✅ [AUTH] Asignados ${todosLosPermisos.length} permisos al rol ${rol?.nombre}`);
+          
+          // Recargar permisos
+          permisosData = await db
+            .selectFrom('permisos_rol')
+            .innerJoin('permisos', 'permisos.id', 'permisos_rol.permiso_id')
+            .select('permisos.clave')
+            .where('permisos_rol.rol_id', '=', empleado.rol_id)
+            .where('permisos_rol.empresa_id', '=', empresaId)
+            .execute();
+          
+          permisosList = permisosData.map(p => p.clave);
+        }
+      } catch (error) {
+        console.error('❌ [AUTH] Error al auto-reparar permisos:', error);
+        // Continuar sin permisos (el usuario puede usar emergency-fix si es necesario)
+      }
+    }
 
     // 7. Generar token
     const payload = {

@@ -16,7 +16,6 @@ import compression from 'compression';
 import { db } from './database/database';
 import { verificarServicioCerrado } from './middleware/servicioCerradoMiddleware';
 import authRoutes from './routes/auth';
-import onboardingRoutes from './routes/onboarding'; // NUEVA
 import usuariosRoutes from './routes/usuarios';
 import rolesRoutes from './routes/roles';
 import mesasRoutes from './routes/mesas';
@@ -38,7 +37,6 @@ import nominaRoutes from './routes/nomina';
 import contratosRoutes from './routes/contratos';
 import controlAccesoRoutes from './routes/control-acceso';
 import adminRoutes from './routes/admin'; // Panel Master Admin SaaS
-import emergencyFixRoutes from './routes/emergency-fix'; // Fix de permisos
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -94,9 +92,7 @@ app.use((req, res, next) => {
 
 // Rutas API
 app.use('/api/auth', authRoutes);
-app.use('/api/onboarding', onboardingRoutes); // Inyectar onboarding
 app.use('/api/admin', adminRoutes); // Panel Master Admin SaaS (sin auth de empresa)
-app.use('/api/emergency', emergencyFixRoutes); // Fix de permisos (temporal)
 app.use('/api/control-acceso', controlAccesoRoutes); // Control de acceso (servicio cerrado)
 
 // Middleware de servicio cerrado para rutas operativas
