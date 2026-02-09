@@ -3,7 +3,7 @@
 import { Store, Truck } from 'lucide-react';
 
 interface SeleccionTipoPedidoProps {
-  tipoPedidoSeleccionado?: 'mesa' | 'domicilio';
+  tipoPedidoSeleccionado?: 'mesa' | 'domicilio' | 'llevar';
   onTipoPedidoSelect: (tipo: 'mesa' | 'domicilio') => void;
 }
 
