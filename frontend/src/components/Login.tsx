@@ -2,13 +2,13 @@
 
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { LogIn, Lock, Mail, Building2, AlertTriangle, Pause, Clock, XCircle, Phone } from 'lucide-react';
+import { LogIn, Lock, Mail, Building2, AlertTriangle, Pause, Clock, XCircle, Phone, ShieldOff, Ban } from 'lucide-react';
 
-// Tipos de bloqueo por licencia
-type CodigoLicencia = 'LICENCIA_PAUSADA' | 'LICENCIA_EXPIRADA' | 'SIN_LICENCIA' | null;
+// Tipos de bloqueo por licencia o acceso
+type CodigoBloqueo = 'LICENCIA_PAUSADA' | 'LICENCIA_EXPIRADA' | 'SIN_LICENCIA' | 'SERVICIO_CERRADO' | 'FUERA_DE_HORARIO' | null;
 
-interface ErrorLicencia {
-  codigo: CodigoLicencia;
+interface ErrorBloqueo {
+  codigo: CodigoBloqueo;
   mensaje: string;
 }
 
@@ -18,13 +18,13 @@ export default function Login() {
   const [usuarioEmail, setUsuarioEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [errorLicencia, setErrorLicencia] = useState<ErrorLicencia | null>(null);
+  const [errorBloqueo, setErrorBloqueo] = useState<ErrorBloqueo | null>(null);
   const [procesando, setProcesando] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setErrorLicencia(null);
+    setErrorBloqueo(null);
 
     if (!empresaEmail || !usuarioEmail || !password) {
       setError('Por favor completa todos los campos');
@@ -34,18 +34,15 @@ export default function Login() {
     setProcesando(true);
 
     try {
-      // Enviar empresaEmail + usuarioEmail para identificar empresa y empleado
       await login({ empresaEmail, usuarioEmail, password });
-      // El Login exitoso redirigirá automáticamente
     } catch (err: any) {
-      // Verificar si es un error de licencia
-      const codigosLicencia = ['LICENCIA_PAUSADA', 'LICENCIA_EXPIRADA', 'SIN_LICENCIA'];
+      // Verificar si es un error de licencia o control de acceso
+      const codigosBloqueo = ['LICENCIA_PAUSADA', 'LICENCIA_EXPIRADA', 'SIN_LICENCIA', 'SERVICIO_CERRADO', 'FUERA_DE_HORARIO'];
       
-      // El error puede venir con código en la propiedad 'codigo' o en el mensaje
-      if (err.codigo && codigosLicencia.includes(err.codigo)) {
-        setErrorLicencia({
-          codigo: err.codigo as CodigoLicencia,
-          mensaje: err.message || 'Error de licencia'
+      if (err.codigo && codigosBloqueo.includes(err.codigo)) {
+        setErrorBloqueo({
+          codigo: err.codigo as CodigoBloqueo,
+          mensaje: err.message || 'Error de acceso'
         });
       } else {
         setError(err.message || 'Error al iniciar sesión');
@@ -76,12 +73,12 @@ export default function Login() {
             Iniciar Sesión
           </h2>
 
-          {/* Cartel de bloqueo por licencia */}
-          {errorLicencia && (
-            <LicenciaBloqueadaCartel 
-              codigo={errorLicencia.codigo} 
-              mensaje={errorLicencia.mensaje}
-              onDismiss={() => setErrorLicencia(null)}
+          {/* Cartel de bloqueo por licencia o control de acceso */}
+          {errorBloqueo && (
+            <BloqueoBanner 
+              codigo={errorBloqueo.codigo} 
+              mensaje={errorBloqueo.mensaje}
+              onDismiss={() => setErrorBloqueo(null)}
             />
           )}
 
@@ -198,13 +195,13 @@ export default function Login() {
   );
 }
 
-// Componente para mostrar el cartel de bloqueo por licencia
-function LicenciaBloqueadaCartel({ 
+// Componente para mostrar el cartel de bloqueo por licencia o servicio cerrado
+function BloqueoBanner({ 
   codigo, 
   mensaje,
   onDismiss 
 }: { 
-  codigo: CodigoLicencia; 
+  codigo: CodigoBloqueo; 
   mensaje: string;
   onDismiss: () => void;
 }) {
@@ -245,43 +242,54 @@ function LicenciaBloqueadaCartel({
       title: 'Sin Licencia Activa',
       description: 'Tu empresa no cuenta con una licencia activa para usar el sistema.',
       action: 'Contacta al administrador para activar una licencia.'
+    },
+    SERVICIO_CERRADO: {
+      bgColor: 'bg-orange-50',
+      borderColor: 'border-orange-300',
+      iconBg: 'bg-orange-100',
+      iconColor: 'text-orange-600',
+      titleColor: 'text-orange-800',
+      textColor: 'text-orange-700',
+      Icon: Ban,
+      title: 'Servicio Cerrado',
+      description: 'El servicio se encuentra cerrado por el administrador de tu empresa.',
+      action: 'El administrador debe abrir el servicio para que puedas acceder.'
+    },
+    FUERA_DE_HORARIO: {
+      bgColor: 'bg-amber-50',
+      borderColor: 'border-amber-300',
+      iconBg: 'bg-amber-100',
+      iconColor: 'text-amber-600',
+      titleColor: 'text-amber-800',
+      textColor: 'text-amber-700',
+      Icon: Clock,
+      title: 'Fuera de Horario',
+      description: mensaje || 'No puedes acceder al sistema fuera del horario de operación.',
+      action: 'Intenta nuevamente dentro del horario establecido por tu administrador.'
     }
   };
 
   const currentConfig = codigo ? config[codigo] : null;
-
   if (!currentConfig) return null;
 
   const { bgColor, borderColor, iconBg, iconColor, titleColor, textColor, Icon, title, description, action } = currentConfig;
 
   return (
     <div className={`${bgColor} ${borderColor} border-2 rounded-xl p-5 mb-6`}>
-      {/* Header con icono */}
       <div className="flex items-start gap-4">
         <div className={`${iconBg} p-3 rounded-full`}>
           <Icon className={`w-6 h-6 ${iconColor}`} />
         </div>
         <div className="flex-1">
-          <h3 className={`text-lg font-bold ${titleColor} mb-1`}>
-            {title}
-          </h3>
-          <p className={`text-sm ${textColor} mb-3`}>
-            {description}
-          </p>
-          
-          {/* Acción sugerida */}
+          <h3 className={`text-lg font-bold ${titleColor} mb-1`}>{title}</h3>
+          <p className={`text-sm ${textColor} mb-3`}>{description}</p>
           <div className={`flex items-center gap-2 text-sm ${textColor}`}>
             <Phone className="w-4 h-4" />
             <span>{action}</span>
           </div>
         </div>
       </div>
-
-      {/* Botón para volver a intentar */}
-      <button
-        onClick={onDismiss}
-        className={`mt-4 w-full py-2 px-4 text-sm font-medium ${textColor} hover:underline`}
-      >
+      <button onClick={onDismiss} className={`mt-4 w-full py-2 px-4 text-sm font-medium ${textColor} hover:underline`}>
         Volver a intentar con otra cuenta
       </button>
     </div>
