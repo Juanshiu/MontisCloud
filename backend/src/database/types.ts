@@ -50,6 +50,7 @@ export interface Database {
   configuracion_nomina: ConfiguracionNominaTable
   sesiones: SesionesTable
   auditoria_saas: AuditoriaSaasTable
+  auditoria_acceso: AuditoriaAccesoTable
   nomina_pagos: NominaPagosTable
 }
 
@@ -73,6 +74,13 @@ export interface EmpresasTable {
   deleted_at: Timestamp | null // NULL = no eliminada
   deleted_by: string | null // UUID del super admin que eliminó
   delete_reason: string | null // Motivo obligatorio de eliminación
+  // Campos de Servicio Cerrado (Plan Profesional+)
+  servicio_cerrado: Generated<boolean>
+  servicio_cerrado_desde: Timestamp | null
+  servicio_cerrado_por: string | null // UUID del admin que cerró
+  horario_acceso_activo: Generated<boolean>
+  horario_acceso_inicio: string | null // formato 'HH:MM'
+  horario_acceso_fin: string | null // formato 'HH:MM'
   created_at: Generated<Timestamp>
   updated_at: Generated<Timestamp>
 }
@@ -121,6 +129,18 @@ export interface AuditoriaSaasTable {
   detalles: JSONColumnType<Record<string, any>>
   admin_id: string
   admin_email: string
+  ip_address: string | null
+  user_agent: string | null
+  created_at: Generated<Timestamp>
+}
+
+// Tabla de auditoría de control de acceso
+export interface AuditoriaAccesoTable {
+  id: Generated<string>
+  empresa_id: string
+  usuario_id: string | null
+  accion: string // 'servicio_cerrado_activado', 'servicio_cerrado_desactivado', 'horario_acceso_modificado', 'acceso_bloqueado_servicio_cerrado', 'acceso_bloqueado_fuera_horario'
+  detalles: JSONColumnType<Record<string, any>>
   ip_address: string | null
   user_agent: string | null
   created_at: Generated<Timestamp>

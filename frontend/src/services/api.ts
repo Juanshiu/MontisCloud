@@ -36,12 +36,41 @@ api.interceptors.request.use(
   }
 );
 
-// Interceptor de respuesta para manejar errores de conexión
+// Interceptor de respuesta para manejar errores de conexión y expiración de token
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
+    // ===== MANEJO DE TOKEN EXPIRADO =====
+    // Si el backend responde 401 con código TOKEN_EXPIRED:
+    // Limpiar sesión completa y redirigir a login
+    if (
+      error.response?.status === 401 &&
+      (error.response?.data?.code === 'TOKEN_EXPIRED' || error.response?.data?.codigo === 'TOKEN_EXPIRED') &&
+      !originalRequest._tokenExpiredHandled
+    ) {
+      originalRequest._tokenExpiredHandled = true;
+
+      if (typeof window !== 'undefined') {
+        // Limpiar toda la sesión
+        localStorage.removeItem('token');
+        localStorage.removeItem('impersonation_active');
+        localStorage.removeItem('impersonation_data');
+        
+        // Despachar evento para que AuthContext se actualice
+        window.dispatchEvent(new CustomEvent('session-expired', {
+          detail: { message: 'Tu sesión expiró por seguridad. Inicia sesión nuevamente.' }
+        }));
+
+        // Redirigir a login (forzar recarga para limpiar estado React)
+        window.location.href = '/';
+      }
+
+      return Promise.reject(error);
+    }
+
+    // ===== MANEJO DE ERRORES DE RED / FALLBACK =====
     // Si hay error de red/timeout y no se ha intentado con fallback
     if (
       (error.code === 'ECONNABORTED' || 
@@ -733,6 +762,30 @@ export const apiService = {
     }, {
       responseType: 'blob'
     });
+    return response.data;
+  },
+
+  // ========================
+  // CONTROL DE ACCESO
+  // ========================
+
+  async getEstadoControlAcceso(): Promise<any> {
+    const response = await api.get('/control-acceso/estado');
+    return response.data;
+  },
+
+  async toggleServicioCerrado(activar: boolean): Promise<any> {
+    const response = await api.post('/control-acceso/servicio-cerrado', { activar });
+    return response.data;
+  },
+
+  async configurarHorarioAcceso(activo: boolean, horaInicio?: string, horaFin?: string): Promise<any> {
+    const response = await api.put('/control-acceso/horario', { activo, horaInicio, horaFin });
+    return response.data;
+  },
+
+  async getAuditoriaAcceso(limit: number = 50, offset: number = 0): Promise<any> {
+    const response = await api.get(`/control-acceso/auditoria?limit=${limit}&offset=${offset}`);
     return response.data;
   },
 };
