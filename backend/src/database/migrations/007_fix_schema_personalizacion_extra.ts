@@ -1,21 +1,37 @@
 import { Kysely, sql } from 'kysely'
 
 export async function up(db: Kysely<any>): Promise<void> {
-  // Categorias Personalizacion
-  await db.schema
-    .alterTable('categorias_personalizacion')
-    .addColumn('descripcion', 'text')
-    .execute()
+  // Categorias Personalizacion - agregar columnas solo si no existen
+  await sql`
+    ALTER TABLE categorias_personalizacion
+    ADD COLUMN IF NOT EXISTS descripcion TEXT
+  `.execute(db)
 
-  // Items Personalizacion
-  await db.schema
-    .alterTable('items_personalizacion')
-    .addColumn('descripcion', 'text')
-    .addColumn('precio_adicional', 'integer', (col) => col.defaultTo(0))
-    .addColumn('usa_insumos', 'boolean', (col) => col.defaultTo(false))
-    .addColumn('cantidad_inicial', 'decimal', (col) => col.defaultTo(0))
-    .addColumn('updated_at', 'timestamp', (col) => col.defaultTo(sql`now()`))
-    .execute()
+  // Items Personalizacion - agregar columnas solo si no existen
+  await sql`
+    ALTER TABLE items_personalizacion
+    ADD COLUMN IF NOT EXISTS descripcion TEXT
+  `.execute(db)
+
+  await sql`
+    ALTER TABLE items_personalizacion
+    ADD COLUMN IF NOT EXISTS precio_adicional INTEGER DEFAULT 0
+  `.execute(db)
+
+  await sql`
+    ALTER TABLE items_personalizacion
+    ADD COLUMN IF NOT EXISTS usa_insumos BOOLEAN DEFAULT false
+  `.execute(db)
+
+  await sql`
+    ALTER TABLE items_personalizacion
+    ADD COLUMN IF NOT EXISTS cantidad_inicial DECIMAL DEFAULT 0
+  `.execute(db)
+
+  await sql`
+    ALTER TABLE items_personalizacion
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT now()
+  `.execute(db)
 }
 
 export async function down(db: Kysely<any>): Promise<void> {
