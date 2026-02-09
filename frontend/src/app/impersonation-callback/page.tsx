@@ -1,17 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-/**
- * Página de callback para impersonación
- * 
- * Recibe el token de impersonación desde el admin panel y lo almacena
- * en localStorage para que el usuario pueda usar el sistema de comandas.
- * 
- * URL: /impersonation-callback?token=xxx
- */
-export default function ImpersonationCallbackPage() {
+function ImpersonationCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
@@ -19,7 +11,7 @@ export default function ImpersonationCallbackPage() {
 
   useEffect(() => {
     const token = searchParams.get('token');
-    
+
     if (!token) {
       setStatus('error');
       setMessage('No se proporcionó token de impersonación');
@@ -34,14 +26,14 @@ export default function ImpersonationCallbackPage() {
       }
 
       const payload = JSON.parse(atob(parts[1]));
-      
+
       if (!payload.impersonated) {
         throw new Error('Este no es un token de impersonación válido');
       }
 
       // Guardar el token en localStorage para el sistema de comandas
       localStorage.setItem('token', token);
-      
+
       // Guardar datos de impersonación para mostrar el banner
       localStorage.setItem('impersonation_active', 'true');
       localStorage.setItem('impersonation_data', JSON.stringify({
@@ -144,5 +136,17 @@ export default function ImpersonationCallbackPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ImpersonationCallbackPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
+        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <ImpersonationCallbackContent />
+    </Suspense>
   );
 }
