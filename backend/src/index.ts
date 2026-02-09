@@ -52,9 +52,10 @@ const allowedOrigins = [
   'http://localhost:3002',
   // IPs locales (desarrollo en red local)
   /^http:\/\/(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3})(:\d+)?$/,
-  // Dominios de producción en Render (actualizar con tus URLs reales)
+  // Dominios de producción en Render
   'https://montis-cloud-frontend.onrender.com',
   'https://montis-cloud-admin.onrender.com',
+  'https://sistema-de-comandas-casa-montis.onrender.com', // Frontend sistema de comandas
 ];
 
 app.use(cors({
