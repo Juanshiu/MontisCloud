@@ -14,6 +14,7 @@ import helmet from 'helmet';
 import compression from 'compression';
 
 import { db } from './database/database';
+import { verificarServicioCerrado } from './middleware/servicioCerradoMiddleware';
 import authRoutes from './routes/auth';
 import onboardingRoutes from './routes/onboarding'; // NUEVA
 import usuariosRoutes from './routes/usuarios';
@@ -35,6 +36,7 @@ import insumoCategoriasRoutes from './routes/insumo-categorias';
 import empleadosRoutes from './routes/empleados';
 import nominaRoutes from './routes/nomina';
 import contratosRoutes from './routes/contratos';
+import controlAccesoRoutes from './routes/control-acceso';
 import adminRoutes from './routes/admin'; // Panel Master Admin SaaS
 
 const app = express();
@@ -92,6 +94,11 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/onboarding', onboardingRoutes); // Inyectar onboarding
 app.use('/api/admin', adminRoutes); // Panel Master Admin SaaS (sin auth de empresa)
+app.use('/api/control-acceso', controlAccesoRoutes); // Control de acceso (servicio cerrado)
+
+// Middleware de servicio cerrado para rutas operativas
+// Se aplica DESPUÉS de auth (que ya ocurre en cada ruta) pero ANTES del handler
+// Solo aplica a rutas que usen verificarAutenticacion internamente
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/roles', rolesRoutes);
 app.use('/api/mesas', mesasRoutes);

@@ -53,7 +53,10 @@ export type AuditoriaAccion =
   | 'sesiones_forzadas_cierre'
   | 'impersonacion_iniciada'
   | 'impersonacion_finalizada'
-  | 'usuarios_desactivados';
+  | 'usuarios_desactivados'
+  | 'servicio_cerrado_activado'
+  | 'servicio_cerrado_desactivado'
+  | 'horario_acceso_modificado';
 
 // Motivos predefinidos para eliminación de empresa
 export type MotivoEliminacionEmpresa = 

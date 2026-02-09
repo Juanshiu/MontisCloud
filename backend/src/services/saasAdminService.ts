@@ -1627,7 +1627,8 @@ export class SaasAdminService {
         reportes_basicos: true,
         reportes_avanzados: true,
         inventario: true,
-        nomina: true
+        nomina: true,
+        control_acceso: true
       },
       activo: true
     },
@@ -1649,6 +1650,7 @@ export class SaasAdminService {
         inventario: true,
         inventario_avanzado: true,
         nomina: true,
+        control_acceso: true,
         multi_sucursal: true,
         api_acceso: true
       },

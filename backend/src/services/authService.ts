@@ -3,9 +3,11 @@ import jwt from 'jsonwebtoken';
 import { db } from '../database/database';
 import { UsuarioRepository } from '../repositories/usuarioRepository';
 import { EmpresaRepository } from '../repositories/empresaRepository';
+import { ControlAccesoService } from './controlAccesoService';
 
 const usuarioRepository = new UsuarioRepository();
 const empresaRepository = new EmpresaRepository();
+const controlAccesoService = new ControlAccesoService();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-dev-key';
 const JWT_EXPIRES_IN = '12h';
@@ -155,6 +157,29 @@ export class AuthService {
         (error as any).codigo = 'LICENCIA_EXPIRADA';
         throw error;
       }
+    }
+
+    // 4.6. Verificar control de acceso (servicio cerrado / fuera de horario)
+    // Determinar si el empleado es admin
+    const rolEmpleado = await db
+      .selectFrom('roles')
+      .select(['nombre', 'es_superusuario'])
+      .where('id', '=', empleado.rol_id || '')
+      .executeTakeFirst();
+    
+    const rolesAdmin = ['Administrador', 'Super Admin', 'Admin', 'Master'];
+    const esAdmin = rolEmpleado ? (rolesAdmin.includes(rolEmpleado.nombre) || rolEmpleado.es_superusuario) : false;
+
+    const bloqueoAcceso = await controlAccesoService.verificarAccesoUsuario(
+      empresaId,
+      empleado.id,
+      !!esAdmin
+    );
+
+    if (bloqueoAcceso) {
+      const error = new Error(bloqueoAcceso.message);
+      (error as any).codigo = bloqueoAcceso.code;
+      throw error;
     }
 
     // 5. Obtener rol del empleado

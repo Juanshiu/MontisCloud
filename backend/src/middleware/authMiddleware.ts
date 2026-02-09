@@ -34,8 +34,17 @@ export const verificarAutenticacion = async (
     try {
       decoded = authService.verifyToken(token);
       console.log('[AUTH] Token decodificado exitosamente, userId:', decoded.userId, 'empresaId:', decoded.empresaId, 'impersonated:', decoded.impersonated);
-    } catch (err) {
+    } catch (err: any) {
       console.error('[AUTH] Error al verificar token:', err);
+      // Diferenciar token expirado de token inválido
+      if (err.name === 'TokenExpiredError') {
+        res.status(401).json({ 
+          error: 'Tu sesión ha expirado por seguridad. Inicia sesión nuevamente.',
+          code: 'TOKEN_EXPIRED',
+          codigo: 'TOKEN_EXPIRED'
+        });
+        return;
+      }
       res.status(401).json({ error: 'Token inválido o expirado' });
       return;
     }

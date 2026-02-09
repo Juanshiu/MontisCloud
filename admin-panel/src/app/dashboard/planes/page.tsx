@@ -131,7 +131,8 @@ export default function ConfiguracionPlanesPage() {
     inventario_avanzado: 'Inventario Avanzado',
     nomina: 'Nómina',
     multi_sucursal: 'Multi-sucursal',
-    api_acceso: 'Acceso API'
+    api_acceso: 'Acceso API',
+    control_acceso: 'Control de Acceso / Cierre de Servicio'
   };
 
   if (loading) {
