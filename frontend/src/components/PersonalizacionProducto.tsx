@@ -6,7 +6,7 @@ import { apiService } from '@/services/api';
 import { CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 
 interface CategoriaConItems {
-  id: number;
+  id: string;
   nombre: string;
   items: ItemPersonalizacion[];
 }
@@ -74,7 +74,7 @@ export default function PersonalizacionProducto({ producto, onPersonalizacionCha
         apiService.getConfiguracionSistema()
       ]);
 
-      const riesgosMap: Record<number, 'OK' | 'BAJO' | 'CRITICO' | 'AGOTADO'> = {};
+      const riesgosMap: Record<string, 'OK' | 'BAJO' | 'CRITICO' | 'AGOTADO'> = {};
       riesgosResponse.forEach(item => {
         riesgosMap[item.item_personalizacion_id] = item.estado;
       });
@@ -132,7 +132,7 @@ export default function PersonalizacionProducto({ producto, onPersonalizacionCha
     }
   };
 
-  const handleSeleccion = (categoriaId: number, itemId: number) => {
+  const handleSeleccion = (categoriaId: string, itemId: string) => {
     const nuevaPersonalizacion = { ...personalizacion };
     
     // Si ya está seleccionado, deseleccionar (toggle)

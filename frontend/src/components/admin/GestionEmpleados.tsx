@@ -124,7 +124,7 @@ const GestionEmpleados: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     if (!window.confirm('¿Está seguro de eliminar este empleado? Esta acción no se puede deshacer.')) return;
     try {
         await apiService.deleteEmpleado(id);

@@ -252,7 +252,7 @@ export default function GestionProductos() {
     }
   };
 
-  const eliminarProducto = async (id: number) => {
+  const eliminarProducto = async (id: string) => {
     if (!confirm('¿Está seguro de que desea eliminar este producto?')) {
       return;
     }
@@ -707,6 +707,15 @@ export default function GestionProductos() {
                                 const porcentaje = getInventoryPercentage(producto.cantidad_actual, producto.cantidad_inicial);
                                 const colors = INVENTORY_COLORS[status];
                                 const mensaje = getInventoryStatusMessage(status);
+                                
+                                // Si está agotado (0 stock), mostrar badge prominente como insumos
+                                if (status === 'DEPLETED') {
+                                  return (
+                                    <span className="text-xs px-2 py-1 rounded font-bold bg-red-600 text-white">
+                                      AGOTADO
+                                    </span>
+                                  );
+                                }
                                 
                                 return (
                                   <div className="space-y-1">

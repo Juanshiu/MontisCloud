@@ -33,7 +33,7 @@ interface InsumoForm {
   stock_minimo: number;
   stock_critico: number;
   costo_unitario: number | null;
-  categoria_id: number | null;
+  categoria_id: string | null;
 }
 
 export default function GestionInventarioAvanzado() {
@@ -43,7 +43,7 @@ export default function GestionInventarioAvanzado() {
   // Categorías de Insumos
   const [insumoCategorias, setInsumoCategorias] = useState<InsumoCategoria[]>([]);
   const [categoriaForm, setCategoriaForm] = useState<Partial<InsumoCategoria>>({ nombre: '', descripcion: '' });
-  const [categoriaEditandoId, setCategoriaEditandoId] = useState<number | null>(null);
+  const [categoriaEditandoId, setCategoriaEditandoId] = useState<string | null>(null);
   const [mostrarModalCategoria, setMostrarModalCategoria] = useState(false);
   const [categoriaError, setCategoriaError] = useState<string | null>(null);
 
@@ -73,8 +73,8 @@ export default function GestionInventarioAvanzado() {
     banco_nit_titular: '',
     banco_numero_cuenta: ''
   });
-  const [proveedorEditandoId, setProveedorEditandoId] = useState<number | null>(null);
-  const [verBancosId, setVerBancosId] = useState<number | null>(null);
+  const [proveedorEditandoId, setProveedorEditandoId] = useState<string | null>(null);
+  const [verBancosId, setVerBancosId] = useState<string | null>(null);
   const [proveedorError, setProveedorError] = useState<string | null>(null);
   const [mostrarModalProveedor, setMostrarModalProveedor] = useState(false);
   const [cargandoProveedores, setCargandoProveedores] = useState(false);
@@ -89,24 +89,24 @@ export default function GestionInventarioAvanzado() {
     costo_unitario: null,
     categoria_id: null
   });
-  const [insumoEditandoId, setInsumoEditandoId] = useState<number | null>(null);
+  const [insumoEditandoId, setInsumoEditandoId] = useState<string | null>(null);
   const [insumoError, setInsumoError] = useState<string | null>(null);
   const [mostrarModalInsumo, setMostrarModalInsumo] = useState(false);
 
   const [productos, setProductos] = useState<Producto[]>([]);
-  const [productoSeleccionadoId, setProductoSeleccionadoId] = useState<number | null>(null);
+  const [productoSeleccionadoId, setProductoSeleccionadoId] = useState<string | null>(null);
   const [recetaItems, setRecetaItems] = useState<RecetaProductoInsumo[]>([]);
   const [recetaError, setRecetaError] = useState<string | null>(null);
 
   const [categoriasPersonalizacion, setCategoriasPersonalizacion] = useState<CategoriaPersonalizacion[]>([]);
-  const [categoriaPersonalizacionId, setCategoriaPersonalizacionId] = useState<number | null>(null);
+  const [categoriaPersonalizacionId, setCategoriaPersonalizacionId] = useState<string | null>(null);
   const [itemsPersonalizacion, setItemsPersonalizacion] = useState<ItemPersonalizacion[]>([]);
-  const [itemPersonalizacionId, setItemPersonalizacionId] = useState<number | null>(null);
+  const [itemPersonalizacionId, setItemPersonalizacionId] = useState<string | null>(null);
   const [ajustesItems, setAjustesItems] = useState<AjustePersonalizacionInsumo[]>([]);
   const [ajustesError, setAjustesError] = useState<string | null>(null);
 
-  const [ajusteInsumoId, setAjusteInsumoId] = useState<number | null>(null);
-  const [ajusteProveedorId, setAjusteProveedorId] = useState<number | null>(null);
+  const [ajusteInsumoId, setAjusteInsumoId] = useState<string | null>(null);
+  const [ajusteProveedorId, setAjusteProveedorId] = useState<string | null>(null);
   const [ajusteCantidad, setAjusteCantidad] = useState<number>(0);
   const [ajusteMotivo, setAjusteMotivo] = useState<string>('');
   const [ajusteError, setAjusteError] = useState<string | null>(null);
@@ -114,7 +114,7 @@ export default function GestionInventarioAvanzado() {
 
   const [historial, setHistorial] = useState<InsumoHistorial[]>([]);
   const [historialError, setHistorialError] = useState<string | null>(null);
-  const [historialInsumoId, setHistorialInsumoId] = useState<number | null>(null);
+  const [historialInsumoId, setHistorialInsumoId] = useState<string | null>(null);
   const [fechaInicio, setFechaInicio] = useState<string>('');
   const [fechaFin, setFechaFin] = useState<string>('');
   const [limpiandoHistorial, setLimpiandoHistorial] = useState(false);
@@ -127,7 +127,7 @@ export default function GestionInventarioAvanzado() {
       const res = await apiService.limpiarHistorialInsumos(dias);
       mostrarExito(res.message);
       if (tab === 'historial') {
-        renderHistorial();
+        cargarHistorial();
       }
     } catch (error: any) {
       alert(error?.response?.data?.error || 'Error al limpiar historial');
@@ -197,7 +197,7 @@ export default function GestionInventarioAvanzado() {
     setMostrarModalCategoria(false);
   };
 
-  const eliminarCategoria = async (id: number) => {
+  const eliminarCategoria = async (id: string) => {
     if (!confirm('¿Eliminar esta categoría? Esto no eliminará los insumos asociados.')) return;
     try {
       await apiService.deleteInsumoCategoria(id);
@@ -293,7 +293,7 @@ export default function GestionInventarioAvanzado() {
     setMostrarModalProveedor(false);
   };
 
-  const eliminarProveedor = async (id: number) => {
+  const eliminarProveedor = async (id: string) => {
     if (!confirm('¿Eliminar proveedor?')) return;
     try {
       await apiService.deleteProveedor(id);
@@ -333,7 +333,7 @@ export default function GestionInventarioAvanzado() {
     }
   };
 
-  const cargarItemsPersonalizacion = async (categoriaId: number) => {
+  const cargarItemsPersonalizacion = async (categoriaId: string) => {
     try {
       const data = await apiService.getItemsPersonalizacion(categoriaId);
       setItemsPersonalizacion(data);
@@ -342,7 +342,7 @@ export default function GestionInventarioAvanzado() {
     }
   };
 
-  const cargarRecetaProducto = async (productoId: number) => {
+  const cargarRecetaProducto = async (productoId: string) => {
     try {
       const data = await apiService.getRecetaProducto(productoId);
       setRecetaItems(data);
@@ -351,7 +351,7 @@ export default function GestionInventarioAvanzado() {
     }
   };
 
-  const cargarAjustesPersonalizacion = async (itemId: number) => {
+  const cargarAjustesPersonalizacion = async (itemId: string) => {
     try {
       const data = await apiService.getAjustesPersonalizacion(itemId);
       setAjustesItems(data);
@@ -468,7 +468,7 @@ export default function GestionInventarioAvanzado() {
     setInsumoError(null);
   };
 
-  const eliminarInsumo = async (id: number) => {
+  const eliminarInsumo = async (id: string) => {
     if (!confirm('¿Eliminar insumo?')) return;
     try {
       await apiService.deleteInsumo(id);
@@ -485,7 +485,7 @@ export default function GestionInventarioAvanzado() {
     }
     setRecetaItems(prev => ([
       ...prev,
-      { producto_id: productoSeleccionadoId || 0, insumo_id: insumos[0].id, cantidad_usada: 1 }
+      { producto_id: productoSeleccionadoId || '', insumo_id: insumos[0].id, cantidad_usada: 1 }
     ]));
   };
 
@@ -513,7 +513,7 @@ export default function GestionInventarioAvanzado() {
     }
     setAjustesItems(prev => ([
       ...prev,
-      { item_personalizacion_id: itemPersonalizacionId || 0, insumo_id: insumos[0].id, cantidad_ajuste: 1 }
+      { item_personalizacion_id: itemPersonalizacionId || '', insumo_id: insumos[0].id, cantidad_ajuste: 1 }
     ]));
   };
 
@@ -629,7 +629,7 @@ export default function GestionInventarioAvanzado() {
   };
 
   const costosPorInsumo = new Map(insumos.map(insumo => [insumo.id, insumo.costo_unitario ?? 0]));
-  const obtenerCosto = (insumoId: number) => costosPorInsumo.get(insumoId) || 0;
+  const obtenerCosto = (insumoId: string) => costosPorInsumo.get(insumoId) || 0;
   const totalCostoReceta = recetaItems.reduce((sum, item) => sum + (obtenerCosto(item.insumo_id) * item.cantidad_usada), 0);
   const totalCostoAjustes = ajustesItems.reduce((sum, item) => sum + (obtenerCosto(item.insumo_id) * item.cantidad_ajuste), 0);
 
@@ -1004,7 +1004,7 @@ export default function GestionInventarioAvanzado() {
                               className="w-full bg-transparent border-none focus:ring-0 text-secondary-800 text-sm font-medium p-0"
                               value={item.insumo_id}
                               onChange={(e) => {
-                                const value = Number(e.target.value);
+                                const value = e.target.value;
                                 setRecetaItems(prev => prev.map((r, i) => i === index ? { ...r, insumo_id: value } : r));
                               }}
                             >
@@ -1164,7 +1164,7 @@ export default function GestionInventarioAvanzado() {
                               className="w-full bg-transparent border-none focus:ring-0 text-secondary-800 text-sm font-medium p-0"
                               value={item.insumo_id}
                               onChange={(e) => {
-                                const value = Number(e.target.value);
+                                const value = e.target.value;
                                 setAjustesItems(prev => prev.map((r, i) => i === index ? { ...r, insumo_id: value } : r));
                               }}
                             >

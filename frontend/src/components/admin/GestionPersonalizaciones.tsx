@@ -26,10 +26,10 @@ export default function GestionPersonalizaciones() {
   const [items, setItems] = useState<any[]>([]);
   const [categorias, setCategorias] = useState<any[]>([]);
   const [tipos, setTipos] = useState<any[]>([]);
-  const [riesgosPersonalizaciones, setRiesgosPersonalizaciones] = useState<Record<number, 'OK' | 'BAJO' | 'CRITICO' | 'AGOTADO'>>({});
+  const [riesgosPersonalizaciones, setRiesgosPersonalizaciones] = useState<Record<string, 'OK' | 'BAJO' | 'CRITICO' | 'AGOTADO'>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [editandoId, setEditandoId] = useState<string | number | null>(null);
+  const [editandoId, setEditandoId] = useState<string | null>(null);
   const [creandoNuevo, setCreandoNuevo] = useState(false);
   const [notificacion, setNotificacion] = useState<{ tipo: 'success' | 'error'; mensaje: string } | null>(null);
   const [formulario, setFormulario] = useState<PersonalizacionForm>({
@@ -127,7 +127,7 @@ export default function GestionPersonalizaciones() {
   const cargarRiesgosPersonalizaciones = async () => {
     try {
       const response = await apiService.getRiesgoPersonalizaciones();
-      const mapa: Record<number, 'OK' | 'BAJO' | 'CRITICO' | 'AGOTADO'> = {};
+      const mapa: Record<string, 'OK' | 'BAJO' | 'CRITICO' | 'AGOTADO'> = {};
       response.forEach((item: any) => {
         mapa[item.item_personalizacion_id] = item.estado;
       });
@@ -331,7 +331,7 @@ export default function GestionPersonalizaciones() {
     }
   };
 
-  const eliminarCategoria = async (id: number) => {
+  const eliminarCategoria = async (id: string) => {
     if (!confirm('¿Está seguro de que desea eliminar esta categoría? Las personalizaciones asociadas no se eliminarán, pero la categoría ya no estará disponible.')) {
       return;
     }
@@ -346,7 +346,7 @@ export default function GestionPersonalizaciones() {
     }
   };
 
-  const cambiarDisponibilidad = async (itemId: number, disponibleActual: boolean) => {
+  const cambiarDisponibilidad = async (itemId: string, disponibleActual: boolean) => {
     try {
       const tipoEncontrado = tipos.find(t => t.id === tipoActivo);
       if (!tipoEncontrado || !tipoEncontrado.categoriaId) {

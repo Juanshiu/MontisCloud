@@ -5,7 +5,7 @@ import { Trash2, Edit, Check, X, Plus, Package } from 'lucide-react';
 import { apiService } from '@/services/api';
 
 interface CategoriaProducto {
-  id: number;
+  id: string;
   nombre: string;
   descripcion?: string;
   activo: boolean;
@@ -18,7 +18,7 @@ export default function GestionCategorias() {
   const [error, setError] = useState<string | null>(null);
   const [nuevaCategoria, setNuevaCategoria] = useState('');
   const [nuevaDescripcion, setNuevaDescripcion] = useState('');
-  const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [editandoId, setEditandoId] = useState<string | null>(null);
   const [nombreEditar, setNombreEditar] = useState('');
   const [descripcionEditar, setDescripcionEditar] = useState('');
 
