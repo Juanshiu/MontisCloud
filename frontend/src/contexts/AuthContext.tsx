@@ -179,6 +179,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     verificarSesion();
   }, []);
 
+  // Escuchar evento de sesión expirada (disparado por interceptor api.ts)
+  useEffect(() => {
+    const handleSessionExpired = (event: CustomEvent) => {
+      console.warn('[AUTH] Sesión expirada:', event.detail?.message);
+      removeToken();
+      setUsuario(null);
+      setPermisos([]);
+    };
+
+    window.addEventListener('session-expired', handleSessionExpired as EventListener);
+    return () => {
+      window.removeEventListener('session-expired', handleSessionExpired as EventListener);
+    };
+  }, []);
+
   const value: AuthContextType = {
     usuario,
     permisos,
