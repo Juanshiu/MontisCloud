@@ -10,8 +10,8 @@ const router = Router();
  */
 router.post('/fix-permisos', verificarAutenticacion, async (req: Request, res: Response): Promise<void> => {
     try {
-        const userId = (req as any).usuario?.id;
-        const empresaId = (req as any).usuario?.empresaId;
+        const userId = req.context?.userId;
+        const empresaId = req.context?.empresaId;
 
         if (!userId || !empresaId) {
             res.status(401).json({ error: 'Usuario no autenticado correctamente' });
@@ -114,8 +114,8 @@ router.post('/fix-permisos', verificarAutenticacion, async (req: Request, res: R
  */
 router.get('/check-permisos', verificarAutenticacion, async (req: Request, res: Response): Promise<void> => {
     try {
-        const userId = (req as any).usuario?.id;
-        const empresaId = (req as any).usuario?.empresaId;
+        const userId = req.context?.userId;
+        const empresaId = req.context?.empresaId;
 
         if (!userId || !empresaId) {
             res.status(401).json({ error: 'Usuario no autenticado correctamente' });
