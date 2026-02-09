@@ -43,15 +43,19 @@ export function getInventoryStatus(
   cantidadActual: number | null | undefined,
   cantidadInicial: number | null | undefined
 ): InventoryStatus {
-  if (cantidadActual === null || cantidadActual === undefined || cantidadActual === 0) {
+  // Convertir a número para evitar problemas con strings de PostgreSQL ("0" vs 0)
+  const actual = cantidadActual !== null && cantidadActual !== undefined ? Number(cantidadActual) : null;
+  
+  if (actual === null || actual <= 0) {
     return 'DEPLETED';
   }
   
-  if (!cantidadInicial || cantidadInicial === 0) {
+  const inicial = cantidadInicial ? Number(cantidadInicial) : 0;
+  if (!inicial || inicial === 0) {
     return 'NORMAL';
   }
   
-  const porcentaje = (cantidadActual / cantidadInicial) * 100;
+  const porcentaje = (actual / inicial) * 100;
   
   if (porcentaje < INVENTORY_THRESHOLDS.CRITICAL) {
     return 'CRITICAL';

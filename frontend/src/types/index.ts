@@ -45,7 +45,7 @@ export interface Insumo {
   categoria_id?: string | null;
   categoria_nombre?: string | null;
   activo?: boolean;
-  estado?: 'OK' | 'BAJO' | 'CRITICO' | 'AGOTADO';
+  estado?: 'OK' | 'BAJO' | 'CRITICO' | 'AGOTADO' | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -174,6 +174,12 @@ export interface CategoriaPersonalizacion {
   orden: number;
 }
 
+export interface PasoComanda {
+  paso: number;
+  titulo: string;
+  completado: boolean;
+}
+
 export interface DatosCliente {
   nombre: string;
   direccion: string;
@@ -184,7 +190,7 @@ export interface DatosCliente {
 export interface FormularioComanda {
   mesas: Mesa[];
   items: ItemComanda[];
-  tipo_pedido?: 'mesa' | 'domicilio';
+  tipo_pedido?: 'mesa' | 'domicilio' | 'llevar';
   tipo_servicio?: string;
   datos_cliente?: DatosCliente;
   observaciones_generales?: string;
@@ -199,8 +205,10 @@ export interface Comanda {
   estado: EstadoComanda;
   observaciones_generales?: string;
   mesero?: string;
+  usuario_nombre?: string;
   fecha_creacion: Date;
   fecha_actualizacion: Date;
+  fecha_apertura?: string;
   datos_cliente?: DatosCliente;
   tipo_pedido?: 'mesa' | 'llevar' | 'domicilio';
 }
@@ -209,12 +217,21 @@ export interface ComandaHistorial {
   id: string;
   mesas: string;
   items_resumen: string;
+  items?: any[];
   total: number;
+  subtotal?: number;
   estado: string;
   mesero: string;
+  usuario_nombre?: string;
   fecha: string;
+  fecha_creacion?: string;
   tipo_pedido: string;
   cliente_nombre?: string;
+  datos_cliente?: DatosCliente;
+  metodo_pago?: string;
+  monto_pagado?: number;
+  cambio?: number;
+  observaciones_generales?: string;
 }
 
 export type EstadoComanda = 'pendiente' | 'preparando' | 'lista' | 'entregada' | 'pagada' | 'cancelada' | 'facturada' | 'abierta' | 'en_preparacion';
@@ -290,6 +307,12 @@ export interface PaginatedResponse<T> {
   page: number;
   limit: number;
   totalPages: number;
+  pagination: {
+    total: number;
+    page: number;
+    totalPages: number;
+    limit: number;
+  };
 }
 
 export interface Empleado {
@@ -318,6 +341,8 @@ export interface Empleado {
   tipo_cuenta?: string;
   numero_cuenta?: string;
   estado: 'ACTIVO' | 'INACTIVO';
+  es_periodo_prueba?: boolean;
+  fecha_fin_periodo_prueba?: string;
 }
 
 export interface ConfiguracionNomina {

@@ -367,9 +367,11 @@ export default function SeleccionProductos({ categoria, items, onItemsChange }: 
                 : null;
               const riesgoInsumos = producto.usa_insumos ? riesgosProductos[producto.id] : null;
               
-              // Determinar si debemos bloquear el producto basándonos en la configuración
+              // Bloqueo por inventario físico (usa_inventario):
+              // Solo DEPLETED (0 unidades) bloquea — CRITICAL/LOW son avisos informativos
               const bloqueadoPorInventarioFisico = inventoryStatus === 'DEPLETED';
               
+              // Bloqueo por insumos (usa_insumos):
               // AGOTADO siempre bloquea (porque físicamente no hay insumos suficientes para 1 unidad)
               // CRITICO/BAJO bloquean según la configuración del sistema
               const bloqueadoPorInsumos = 
@@ -388,13 +390,13 @@ export default function SeleccionProductos({ categoria, items, onItemsChange }: 
                     <h3 className="font-semibold text-secondary-800 mb-1 flex items-center flex-wrap gap-1">
                       {producto.nombre}
                       {bloqueadoPorInventarioFisico && (
-                        <span className="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded">
+                        <span className="text-xs bg-red-600 text-white px-2 py-0.5 rounded font-bold">
                           Agotado
                         </span>
                       )}
-                      {(bloqueadoPorInsumos || riesgoInsumos === 'AGOTADO') && !bloqueadoPorInventarioFisico && (
+                      {bloqueadoPorInsumos && !bloqueadoPorInventarioFisico && (
                         <span className="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded">
-                          {riesgoInsumos === 'AGOTADO' ? 'Insumos Agotados' : 'Faltan insumos'}
+                          {String(riesgoInsumos) === 'AGOTADO' ? 'Insumos Agotados' : 'Faltan insumos'}
                         </span>
                       )}
                       {avisoSoloInformativo && !bloqueadoPorInsumos && (
