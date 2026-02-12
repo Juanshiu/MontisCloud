@@ -2,6 +2,8 @@
 
 Plugin ejecutable para detectar e imprimir en impresoras térmicas locales desde el sistema en la nube.
 
+> Nuevo (SaaS / Render): además del servidor local `server.py`, existe un **agente de impresión remota** `printer_agent.py` que hace polling al backend (`/api/print/*`) y **no requiere abrir puertos**. Ver guía completa en `docs/print_workflow.md`.
+
 **Versión:** 2.0.0  
 **Tecnología:** Python 3.x + Flask + PyInstaller  
 **Puerto:** 8001  
