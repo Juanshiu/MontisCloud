@@ -184,12 +184,19 @@ def autodetect_printer() -> Optional[str]:
     return default_name or names[0]
 
 
-def escpos_wrap(text: str, encoding: str = "cp850", cut: bool = True) -> bytes:
+def escpos_font_cmd(font_size: str) -> bytes:
+    # GS ! n
+    if (font_size or '').lower() == 'large':
+        return bytes([0x1D, 0x21, 0x11])
+    return bytes([0x1D, 0x21, 0x00])
+
+
+def escpos_wrap(text: str, encoding: str = "cp850", cut: bool = True, font_size: str = 'normal') -> bytes:
     esc_init = bytes([0x1B, 0x40])
     esc_codepage = bytes([0x1B, 0x74, 0x02])
     gs_cut = bytes([0x1D, 0x56, 0x00])
     payload = text.encode(encoding, errors="replace")
-    data = esc_init + esc_codepage + payload + b"\n\n\n"
+    data = esc_init + esc_codepage + escpos_font_cmd(font_size) + payload + b"\n\n\n"
     if cut:
         data += gs_cut
     return data
@@ -229,6 +236,17 @@ def dividir_texto(texto: str, max_len: int) -> list[str]:
     if actual:
         lineas.append(actual)
     return lineas
+
+
+def resolve_format(payload: Dict[str, Any]) -> tuple[int, str, str]:
+    fmt = payload.get('__format') if isinstance(payload, dict) else None
+    if not isinstance(fmt, dict):
+        fmt = {}
+    paper_width = fmt.get('paperWidth') or fmt.get('paper_width') or '80mm'
+    font_size = fmt.get('fontSize') or fmt.get('font_size') or 'normal'
+    base = 32 if paper_width == '58mm' else 48
+    width = base // 2 if str(font_size).lower() == 'large' else base
+    return width, str(paper_width), str(font_size)
 
 
 def format_ticket(payload: Dict[str, Any], width: int = 48) -> str:
@@ -460,15 +478,20 @@ class Agent:
             return
 
         payload = job.get("payload") or {}
-        text = payload.get("raw_text") if isinstance(payload, dict) else None
+        if not isinstance(payload, dict):
+            payload = {"items": []}
+
+        width, _paper_width, font_size = resolve_format(payload)
+
+        text = payload.get("raw_text")
         if not text:
-            text = format_ticket(payload if isinstance(payload, dict) else {"items": []})
+            text = format_ticket(payload, width=width)
 
         printer_name = self.state.printer_name or autodetect_printer() or get_default_printer_name()
         if not printer_name:
             raise RuntimeError("No se detectó una impresora instalada en Windows")
 
-        print_bytes(printer_name, escpos_wrap(text))
+        print_bytes(printer_name, escpos_wrap(text, font_size=font_size))
         self.ack(job_id, "done", info="ok")
         self.logger.info(f"Job impreso: {job_id}")
 
