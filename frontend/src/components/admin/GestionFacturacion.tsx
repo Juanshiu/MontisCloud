@@ -1,10 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { FileText, Building2, Printer, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
+import { FileText, Building2, Printer, RefreshCw } from 'lucide-react';
 import apiService from '@/services/api';
 import { ConfiguracionFacturacion } from '@/types';
-import { printingService } from '@/services/printingService';
 
 export default function GestionFacturacion() {
   const [config, setConfig] = useState<ConfiguracionFacturacion | null>(null);
@@ -18,31 +17,14 @@ export default function GestionFacturacion() {
   const [pairingInfo, setPairingInfo] = useState<{ activationCode: string; expiresAt: string } | null>(null);
   const [selectedRemotePrinterId, setSelectedRemotePrinterId] = useState<string>('');
   const [remoteJobs, setRemoteJobs] = useState<any[]>([]);
+  const [remoteTesting, setRemoteTesting] = useState(false);
   
-  // Estado para impresión local
-  const [pluginStatus, setPluginStatus] = useState<'checking' | 'online' | 'offline'>('checking');
-  const [printers, setPrinters] = useState<string[]>([]);
-  const [selectedPrinter, setSelectedPrinter] = useState<string>('');
-  const [testingPrinter, setTestingPrinter] = useState(false);
   const [paperWidth, setPaperWidth] = useState<'58mm' | '80mm'>('80mm');
   const [fontSize, setFontSize] = useState<'small' | 'normal' | 'large'>('normal');
 
   useEffect(() => {
     cargarConfiguracion();
-    checkPlugin();
     cargarImpresorasRemotas();
-    
-    // Cargar impresora guardada
-    const savedPrinter = localStorage.getItem('printer_cocina_local');
-    if (savedPrinter) setSelectedPrinter(savedPrinter);
-    
-    // Cargar ancho de papel guardado
-    const savedPaperWidth = localStorage.getItem('paper_width_cocina') as '58mm' | '80mm';
-    if (savedPaperWidth) setPaperWidth(savedPaperWidth);
-    
-    // Cargar tamaño de fuente guardado
-    const savedFontSize = localStorage.getItem('font_size_cocina') as 'small' | 'normal' | 'large';
-    if (savedFontSize) setFontSize(savedFontSize);
   }, []);
 
   const cargarImpresorasRemotas = async () => {
@@ -54,6 +36,11 @@ export default function GestionFacturacion() {
       if (!selectedRemotePrinterId && printers?.[0]?.id) {
         setSelectedRemotePrinterId(printers[0].id);
       }
+
+      const selected = printers?.find((p: any) => p.id === (selectedRemotePrinterId || printers?.[0]?.id));
+      const meta = selected?.meta || {};
+      if (meta?.paperWidth) setPaperWidth(meta.paperWidth);
+      if (meta?.fontSize) setFontSize(meta.fontSize);
     } catch (e) {
       // Silencioso: si no hay permiso o no existe feature, no bloqueamos la vista
       console.error('Error cargando impresoras remotas:', e);
@@ -91,68 +78,74 @@ export default function GestionFacturacion() {
     }
   };
 
-  const checkPlugin = async () => {
-    setPluginStatus('checking');
-    const isOnline = await printingService.checkStatus();
-    setPluginStatus(isOnline ? 'online' : 'offline');
-    
-    if (isOnline) {
-      const printerList = await printingService.getPrinters();
-      setPrinters(printerList);
+  const eliminarImpresoraRemota = async (printerId: string) => {
+    if (typeof window !== 'undefined') {
+      const ok = window.confirm('¿Eliminar esta impresora? Esto también eliminará su cola de jobs.')
+      if (!ok) return
+    }
+
+    try {
+      await apiService.deleteRemotePrinter(printerId)
+      if (selectedRemotePrinterId === printerId) {
+        setSelectedRemotePrinterId('')
+      }
+      await cargarImpresorasRemotas()
+    } catch (e) {
+      console.error('Error eliminando impresora remota:', e)
+    }
+  }
+
+  const handleRemotePaperWidthChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const width = e.target.value as '58mm' | '80mm';
+    setPaperWidth(width);
+    if (!selectedRemotePrinterId) return;
+    try {
+      await apiService.updateRemotePrinterConfig(selectedRemotePrinterId, { paperWidth: width });
+      await cargarImpresorasRemotas();
+    } catch (err) {
+      console.error('Error actualizando paperWidth remoto:', err);
     }
   };
 
-  const handlePrinterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const printer = e.target.value;
-    setSelectedPrinter(printer);
-    localStorage.setItem('printer_cocina_local', printer);
-  };
-
-  const handlePaperWidthChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const width = e.target.value as '58mm' | '80mm';
-    setPaperWidth(width);
-    localStorage.setItem('paper_width_cocina', width);
-  };
-
-  const handleFontSizeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleRemoteFontSizeChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const size = e.target.value as 'small' | 'normal' | 'large';
     setFontSize(size);
-    localStorage.setItem('font_size_cocina', size);
+    if (!selectedRemotePrinterId) return;
+    try {
+      await apiService.updateRemotePrinterConfig(selectedRemotePrinterId, { fontSize: size });
+      await cargarImpresorasRemotas();
+    } catch (err) {
+      console.error('Error actualizando fontSize remoto:', err);
+    }
   };
 
-  const testPrinter = async () => {
-    if (!selectedPrinter) return;
-    
-    setTestingPrinter(true);
-    
-    // Ancho base según tipo de papel
-    let anchoBase = paperWidth === '58mm' ? 32 : 48;
-    
-    // Ajustar ancho según tamaño de fuente
-    // Fuente 'large' usa doble ancho, por lo que necesitamos la mitad de caracteres
-    const anchoCaracteres = fontSize === 'large' ? Math.floor(anchoBase / 2) : anchoBase;
-    const separador = '='.repeat(anchoCaracteres);
-    
-    // Comandos ESC/POS para tamaño de fuente
-    const fontSizeCmd = fontSize === 'small' ? '\x1D\x21\x00' : 
-                        fontSize === 'large' ? '\x1D\x21\x11' : 
-                        '\x1D\x21\x00';
-    
-    const content = `${fontSizeCmd}
+  const testRemotePrinter = async () => {
+    if (!selectedRemotePrinterId) return;
+    setRemoteTesting(true);
+    try {
+      const anchoBase = paperWidth === '58mm' ? 32 : 48;
+      const anchoCaracteres = fontSize === 'large' ? Math.floor(anchoBase / 2) : anchoBase;
+      const separador = '='.repeat(anchoCaracteres);
+      const content = `${separador}
+${'PRUEBA DE IMPRESION'.padStart(Math.floor((anchoCaracteres + 19) / 2))}
 ${separador}
-${'PRUEBA DE IMPRESION'.padStart((anchoCaracteres + 19) / 2)}
-${separador}
-La impresora ${selectedPrinter}
-esta configurada correctamente.
+Impresion remota OK
 
 Ancho: ${paperWidth} (${anchoCaracteres} car.)
 Fuente: ${fontSize === 'small' ? 'Pequeña' : fontSize === 'large' ? 'Grande' : 'Normal'}
 Fecha: ${new Date().toLocaleString()}
 ${separador}
-    `;
-    
-    await printingService.printRaw(content, selectedPrinter);
-    setTestingPrinter(false);
+`;
+
+      await apiService.createRemoteTestPrint(selectedRemotePrinterId, {
+        raw_text: content,
+        __format: { paperWidth, fontSize }
+      });
+    } catch (err) {
+      console.error('Error enviando test remoto:', err);
+    } finally {
+      setRemoteTesting(false);
+    }
   };
 
   const cargarConfiguracion = async () => {
@@ -192,138 +185,6 @@ ${separador}
               Visualización de cómo aparecerá la información en facturas y recibos
             </p>
           </div>
-        </div>
-      </div>
-
-      {/* Configuración de Impresora Local */}
-      <div className="bg-white rounded-xl shadow-sm border border-secondary-200 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-secondary-900 flex items-center gap-2">
-            <Printer size={20} className="text-primary-600" />
-            Configuración de Impresora Local (Opcional)
-          </h3>
-          <button 
-            onClick={checkPlugin}
-            className="p-2 text-secondary-500 hover:text-primary-600 hover:bg-secondary-50 rounded-full transition-colors"
-            title="Verificar conexión"
-          >
-            <RefreshCw size={18} className={pluginStatus === 'checking' ? 'animate-spin' : ''} />
-          </button>
-        </div>
-
-        <div className="space-y-6">
-          {/* Estado del Plugin - Ancho completo */}
-          <div className={`p-4 rounded-lg border ${
-            pluginStatus === 'online' ? 'bg-green-50 border-green-200' : 
-            pluginStatus === 'offline' ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'
-          }`}>
-            <div className="flex items-center gap-3">
-              {pluginStatus === 'online' ? (
-                <CheckCircle className="text-green-600" size={24} />
-              ) : pluginStatus === 'offline' ? (
-                <XCircle className="text-red-600" size={24} />
-              ) : (
-                <RefreshCw className="text-gray-400 animate-spin" size={24} />
-              )}
-              <div>
-                <p className="font-medium text-secondary-900">
-                  {pluginStatus === 'online' ? 'Plugin de Impresión Conectado' : 
-                   pluginStatus === 'offline' ? 'Plugin No Detectado' : 'Verificando conexión...'}
-                </p>
-                <p className="text-sm text-secondary-600">
-                  {pluginStatus === 'online' 
-                    ? 'El sistema puede enviar impresiones locales.' 
-                    : 'Solo aplica para impresión local legacy en este equipo. Si usa Impresión Remota, puede ignorarlo.'}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Grid para Impresora, Ancho de Papel y Tamaño de Fuente */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Selección de Impresora */}
-            <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-secondary-700 mb-1">
-              Seleccionar Impresora
-            </label>
-            <div className="flex gap-2">
-              <select
-                value={selectedPrinter}
-                onChange={handlePrinterChange}
-                disabled={pluginStatus !== 'online'}
-                className="block w-full rounded-lg border-secondary-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 disabled:bg-gray-100"
-              >
-                <option value="">-- Seleccione una impresora --</option>
-                {printers.map((p) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-              <button
-                onClick={testPrinter}
-                disabled={!selectedPrinter || testingPrinter || pluginStatus !== 'online'}
-                className="px-4 py-2 bg-secondary-100 text-secondary-700 rounded-lg hover:bg-secondary-200 disabled:opacity-50 font-medium"
-              >
-                {testingPrinter ? '...' : 'Probar'}
-              </button>
-            </div>
-            {pluginStatus === 'online' && printers.length === 0 && (
-              <p className="text-xs text-amber-600 mt-1">
-                No se encontraron impresoras. Verifique que estén instaladas en Windows.
-              </p>
-            )}
-          </div>
-
-            {/* Ancho de Papel */}
-            <div>
-              <label className="block text-sm font-medium text-secondary-700 mb-1">
-                Ancho de Papel
-              </label>
-              <select
-                value={paperWidth}
-                onChange={handlePaperWidthChange}
-                className="block w-full rounded-lg border-secondary-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-              >
-                <option value="58mm">58mm (POS pequeño)</option>
-                <option value="80mm">80mm (POS estándar)</option>
-              </select>
-              <p className="text-xs text-secondary-500 mt-1">
-                {(() => {
-                  const anchoBase = paperWidth === '58mm' ? 32 : 48;
-                  const anchoReal = fontSize === 'large' ? Math.floor(anchoBase / 2) : anchoBase;
-                  return fontSize === 'large' ? `${anchoReal} caracteres (fuente grande)` : `${anchoBase} caracteres`;
-                })()}
-              </p>
-            </div>
-          </div>
-
-          {/* Tamaño de Fuente */}
-          <div>
-            <label className="block text-sm font-medium text-secondary-700 mb-1">
-              Tamaño de Fuente
-            </label>
-            <select
-              value={fontSize}
-              onChange={handleFontSizeChange}
-              className="block w-full rounded-lg border-secondary-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-            >
-              <option value="small">Pequeña (más líneas)</option>
-              <option value="normal">Normal (recomendado)</option>
-              <option value="large">Grande (más legible)</option>
-            </select>
-            <p className="text-xs text-secondary-500 mt-1">
-              {fontSize === 'small' ? 'Compacto' : fontSize === 'large' ? 'Texto ampliado' : 'Tamaño estándar'}
-            </p>
-          </div>
-        </div>
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-4 text-sm text-blue-800">
-          <p>
-            <strong>Comandas de cocina:</strong> Se imprimirán con ancho {paperWidth} 
-            ({(() => {
-              const anchoBase = paperWidth === '58mm' ? 32 : 48;
-              const anchoReal = fontSize === 'large' ? Math.floor(anchoBase / 2) : anchoBase;
-              return anchoReal;
-            })()} caracteres efectivos) y fuente {fontSize === 'small' ? 'pequeña' : fontSize === 'large' ? 'grande (x2)' : 'normal'}.
-          </p>
         </div>
       </div>
 
@@ -398,32 +259,89 @@ ${separador}
                         ))}
                       </select>
                     </div>
-                    <button
-                      onClick={cargarColaRemota}
-                      disabled={!selectedRemotePrinterId}
-                      className="px-4 py-2 bg-secondary-100 text-secondary-700 rounded-lg hover:bg-secondary-200 disabled:opacity-50 font-medium"
-                    >
-                      Ver cola (pending)
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={cargarColaRemota}
+                        disabled={!selectedRemotePrinterId}
+                        className="px-4 py-2 bg-secondary-100 text-secondary-700 rounded-lg hover:bg-secondary-200 disabled:opacity-50 font-medium"
+                      >
+                        Ver cola (pending)
+                      </button>
+                      <button
+                        onClick={testRemotePrinter}
+                        disabled={!selectedRemotePrinterId || remoteTesting}
+                        className="px-4 py-2 bg-secondary-100 text-secondary-700 rounded-lg hover:bg-secondary-200 disabled:opacity-50 font-medium"
+                      >
+                        {remoteTesting ? '...' : 'Probar'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
+                    <div>
+                      <label className="block text-sm font-medium text-secondary-700 mb-1">Ancho de Papel</label>
+                      <select
+                        value={paperWidth}
+                        onChange={handleRemotePaperWidthChange}
+                        disabled={!selectedRemotePrinterId}
+                        className="block w-full rounded-lg border-secondary-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 disabled:bg-gray-100"
+                      >
+                        <option value="58mm">58mm (POS pequeño)</option>
+                        <option value="80mm">80mm (POS estándar)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-secondary-700 mb-1">Tamaño de Fuente</label>
+                      <select
+                        value={fontSize}
+                        onChange={handleRemoteFontSizeChange}
+                        disabled={!selectedRemotePrinterId}
+                        className="block w-full rounded-lg border-secondary-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 disabled:bg-gray-100"
+                      >
+                        <option value="small">Pequeña (más líneas)</option>
+                        <option value="normal">Normal (recomendado)</option>
+                        <option value="large">Grande (más legible)</option>
+                      </select>
+                    </div>
+                    <div className="flex items-end">
+                      <div className="text-xs text-secondary-500">
+                        {(() => {
+                          const anchoBase = paperWidth === '58mm' ? 32 : 48;
+                          const anchoReal = fontSize === 'large' ? Math.floor(anchoBase / 2) : anchoBase;
+                          return fontSize === 'large' ? `${anchoReal} caracteres (fuente grande)` : `${anchoBase} caracteres`;
+                        })()}
+                      </div>
+                    </div>
                   </div>
 
                   <div className="space-y-2">
                     {remotePrinters.map((p) => {
                       const lastSeen = p.last_seen_at ? new Date(p.last_seen_at) : null;
                       const online = lastSeen ? (Date.now() - lastSeen.getTime() < 90_000) : false;
+                      const windowsPrinterName = p?.meta?.printer_name || p?.meta?.printerName || null;
                       return (
                         <div key={p.id} className="flex items-center justify-between text-sm border border-secondary-200 rounded-lg px-3 py-2">
                           <div>
                             <p className="font-medium text-secondary-900">{p.name}</p>
-                            <p className="text-xs text-secondary-500 break-all">{p.id}</p>
+                            {windowsPrinterName ? (
+                              <p className="text-xs text-secondary-500">Impresora Windows: {windowsPrinterName}</p>
+                            ) : null}
                           </div>
-                          <div className="text-right">
-                            <p className={`font-medium ${online ? 'text-green-700' : 'text-secondary-500'}`}>
-                              {online ? 'ONLINE' : 'OFFLINE'}
-                            </p>
-                            <p className="text-xs text-secondary-500">
-                              {lastSeen ? `Último: ${lastSeen.toLocaleString()}` : 'Sin heartbeat'}
-                            </p>
+                          <div className="flex items-center gap-3">
+                            <div className="text-right">
+                              <p className={`font-medium ${online ? 'text-green-700' : 'text-secondary-500'}`}>
+                                {online ? 'ONLINE' : 'OFFLINE'}
+                              </p>
+                              <p className="text-xs text-secondary-500">
+                                {lastSeen ? `Último: ${lastSeen.toLocaleString()}` : 'Sin heartbeat'}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => eliminarImpresoraRemota(p.id)}
+                              className="px-3 py-1 bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 text-xs font-medium"
+                            >
+                              Eliminar
+                            </button>
                           </div>
                         </div>
                       );

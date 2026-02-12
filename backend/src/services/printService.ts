@@ -232,8 +232,50 @@ export class PrintService {
       .selectFrom('printers')
       .select(['id', 'name', 'meta', 'is_default', 'activo', 'last_seen_at', 'created_at', 'updated_at'])
       .where('empresa_id', '=', empresaId)
+      .where('activo', '=', true)
       .orderBy('created_at', 'desc')
       .execute()
+  }
+
+  async updatePrinterConfig(input: {
+    empresaId: string
+    printerId: string
+    paperWidth?: '58mm' | '80mm'
+    fontSize?: 'small' | 'normal' | 'large'
+  }): Promise<boolean> {
+    const { empresaId, printerId, paperWidth, fontSize } = input
+
+    const patch: Record<string, any> = {}
+    if (paperWidth) patch.paperWidth = paperWidth
+    if (fontSize) patch.fontSize = fontSize
+
+    if (Object.keys(patch).length === 0) return false
+
+    const updated = await db
+      .updateTable('printers')
+      .set({
+        meta: sql`coalesce(meta, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
+        updated_at: sql`now()`
+      })
+      .where('id', '=', printerId)
+      .where('empresa_id', '=', empresaId)
+      .where('activo', '=', true)
+      .returning(['id'])
+      .executeTakeFirst()
+
+    return Boolean(updated?.id)
+  }
+
+  async deletePrinter(input: { empresaId: string; printerId: string }): Promise<boolean> {
+    const { empresaId, printerId } = input
+
+    const deleted = await db
+      .deleteFrom('printers')
+      .where('id', '=', printerId)
+      .where('empresa_id', '=', empresaId)
+      .executeTakeFirst()
+
+    return Number(deleted.numDeletedRows || 0) > 0
   }
 
   async getDefaultPrinterId(empresaId: string, trx?: Kysely<Database>) {
@@ -268,7 +310,7 @@ export class PrintService {
     // Validar pertenencia (evita que un tenant cree jobs en printer ajena)
     const printer = await dbOrTrx
       .selectFrom('printers')
-      .select(['id'])
+      .select(['id', 'meta'])
       .where('id', '=', printerId)
       .where('empresa_id', '=', empresaId)
       .where('activo', '=', true)
@@ -276,6 +318,19 @@ export class PrintService {
 
     if (!printer) {
       throw new Error('Impresora no encontrada o no pertenece a la empresa')
+    }
+
+    const printerMeta = (printer as any).meta as any
+    const existingFormat = (payload as any)?.__format
+    const mergedPayload = {
+      ...payload,
+      __format:
+        existingFormat && typeof existingFormat === 'object'
+          ? existingFormat
+          : {
+              paperWidth: printerMeta?.paperWidth || '80mm',
+              fontSize: printerMeta?.fontSize || 'normal'
+            }
     }
 
     const existing = await dbOrTrx
@@ -298,7 +353,7 @@ export class PrintService {
         printer_id: printerId,
         external_id: externalId,
         type,
-        payload,
+        payload: mergedPayload,
         status: 'pending',
         attempts: 0,
         last_error: null,
