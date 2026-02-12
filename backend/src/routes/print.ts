@@ -5,6 +5,8 @@ import {
   createPairingToken,
   pairPrinter,
   listPrinters,
+  updatePrinterConfig,
+  deletePrinter,
   createJob,
   getJobs,
   ackJob,
@@ -46,6 +48,20 @@ router.get(
   verificarAutenticacion,
   verificarPermiso('gestionar_sistema'),
   (req, res) => listPrinters(req, res)
+)
+
+router.patch(
+  '/printers/:id/config',
+  verificarAutenticacion,
+  verificarPermiso('gestionar_sistema'),
+  (req, res) => updatePrinterConfig(req, res)
+)
+
+router.delete(
+  '/printers/:id',
+  verificarAutenticacion,
+  verificarPermiso('gestionar_sistema'),
+  (req, res) => deletePrinter(req, res)
 )
 
 // ==================== JOBS ====================

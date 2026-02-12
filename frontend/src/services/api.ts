@@ -646,6 +646,23 @@ export const apiService = {
       return response.data?.jobs || [];
     },
 
+    async deleteRemotePrinter(printerId: string): Promise<void> {
+      await api.delete(`/print/printers/${printerId}`);
+    },
+
+    async updateRemotePrinterConfig(printerId: string, config: { paperWidth?: '58mm' | '80mm'; fontSize?: 'small' | 'normal' | 'large' }): Promise<void> {
+      await api.patch(`/print/printers/${printerId}/config`, config);
+    },
+
+    async createRemoteTestPrint(printerId: string, payload: any): Promise<void> {
+      await api.post('/print/jobs', {
+        printerId,
+        externalId: `test:${Date.now()}`,
+        type: 'kitchen_ticket',
+        payload
+      });
+    },
+
   async updateConfiguracionNomina(config: Partial<ConfiguracionNomina>): Promise<ConfiguracionNomina> {
     const response = await api.put('/nomina/configuracion', config);
     return response.data;

@@ -65,6 +65,39 @@ export async function listPrinters(req: Request, res: Response) {
   res.json({ success: true, printers })
 }
 
+export async function updatePrinterConfig(req: Request, res: Response) {
+  const { empresaId } = req.context
+  const { id } = req.params
+  const { paperWidth, fontSize } = req.body || {}
+
+  const ok = await printService.updatePrinterConfig({
+    empresaId,
+    printerId: id,
+    paperWidth,
+    fontSize
+  })
+
+  if (!ok) {
+    res.status(404).json({ error: 'Impresora no encontrada' })
+    return
+  }
+
+  res.status(200).json({ success: true })
+}
+
+export async function deletePrinter(req: Request, res: Response) {
+  const { empresaId } = req.context
+  const { id } = req.params
+
+  const ok = await printService.deletePrinter({ empresaId, printerId: id })
+  if (!ok) {
+    res.status(404).json({ error: 'Impresora no encontrada' })
+    return
+  }
+
+  res.status(200).json({ success: true })
+}
+
 export async function createJob(req: Request, res: Response) {
   const { empresaId } = req.context
   const { printerId, externalId, type, payload } = req.body || {}
