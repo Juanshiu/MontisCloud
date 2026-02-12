@@ -2,14 +2,17 @@ import { db } from '../database/database';
 import { ComandaRepository, NewComanda, NewComandaItem } from '../repositories/comandaRepository';
 import { InventarioService } from './inventarioService';
 import { v4 as uuidv4 } from 'uuid';
+import { PrintService } from './printService';
 
 export class ComandaService {
     private comandaRepo: ComandaRepository;
     private inventarioService: InventarioService;
+    private printService: PrintService;
 
     constructor() {
         this.comandaRepo = new ComandaRepository();
         this.inventarioService = new InventarioService();
+        this.printService = new PrintService();
     }
 
     private async buildItemsProcessed(items: any[], empresaId: string, trx: any) {
@@ -26,13 +29,15 @@ export class ComandaService {
             }
         }
 
-        const personalizacionPrices = new Map<string, number>();
+        const personalizacionInfo = new Map<string, { nombre: string; precio: number }>();
         if (allPersonalizacionIds.size > 0) {
-            const prices = await trx.selectFrom('items_personalizacion')
-                .select(['id', 'precio_adicional'])
+            const rows = await trx.selectFrom('items_personalizacion')
+                .select(['id', 'nombre', 'precio_adicional'])
                 .where('id', 'in', Array.from(allPersonalizacionIds))
                 .execute();
-            prices.forEach((p: { id: string; precio_adicional: any }) => personalizacionPrices.set(p.id, Number(p.precio_adicional || 0)));
+            rows.forEach((p: { id: string; nombre: string; precio_adicional: any }) => {
+                personalizacionInfo.set(p.id, { nombre: p.nombre, precio: Number(p.precio_adicional || 0) });
+            });
         }
 
         for (const item of items) {
@@ -47,8 +52,8 @@ export class ComandaService {
             let extraPrice = 0;
             if (item.personalizacion) {
                 Object.values(item.personalizacion).forEach((val: any) => {
-                    if (typeof val === 'string') extraPrice += personalizacionPrices.get(val) || 0;
-                    else if (Array.isArray(val)) val.forEach(v => extraPrice += personalizacionPrices.get(v) || 0);
+                    if (typeof val === 'string') extraPrice += personalizacionInfo.get(val)?.precio || 0;
+                    else if (Array.isArray(val)) val.forEach(v => extraPrice += personalizacionInfo.get(v)?.precio || 0);
                 });
             }
 
@@ -67,7 +72,128 @@ export class ComandaService {
             });
         }
 
-        return { itemsProcessed, subtotal };
+        return { itemsProcessed, subtotal, personalizacionInfo };
+    }
+
+    private async buildKitchenTicketPayload(params: {
+        empresaId: string;
+        usuarioId: string | null;
+        comandaId: string;
+        tipoPedido: string;
+        mesaIds: string[];
+        cliente: any;
+        observaciones: string | null;
+        items: any[];
+        itemsProcessed: NewComandaItem[];
+        personalizacionInfo: Map<string, { nombre: string; precio: number }>;
+        trx: any;
+        onlyDeltas?: boolean;
+        deltasByIndex?: Map<number, number>; // index -> cantidad para imprimir
+    }) {
+        const {
+            empresaId,
+            usuarioId,
+            comandaId,
+            tipoPedido,
+            mesaIds,
+            cliente,
+            observaciones,
+            items,
+            itemsProcessed,
+            personalizacionInfo,
+            trx,
+            onlyDeltas,
+            deltasByIndex
+        } = params;
+
+        // Mesas -> números
+        const mesas = mesaIds.length
+            ? await trx
+                  .selectFrom('mesas')
+                  .select(['id', 'numero'])
+                  .where('empresa_id', '=', empresaId)
+                  .where('id', 'in', mesaIds)
+                  .execute()
+            : [];
+        const mesaNumeroById = new Map(mesas.map((m: any) => [m.id, m.numero]));
+
+        // Usuario -> nombre
+        let usuarioNombre: string | null = null;
+        if (usuarioId) {
+            const u = await trx.selectFrom('usuarios')
+                .select(['nombre'])
+                .where('id', '=', usuarioId)
+                .where('empresa_id', '=', empresaId)
+                .executeTakeFirst();
+            usuarioNombre = u?.nombre || null;
+        }
+
+        // Productos -> nombre (por si el frontend no envía producto completo)
+        const productIds = Array.from(new Set(itemsProcessed.map(i => i.producto_id)));
+        const productos = productIds.length
+            ? await trx
+                  .selectFrom('productos')
+                  .select(['id', 'nombre'])
+                  .where('empresa_id', '=', empresaId)
+                  .where('id', 'in', productIds)
+                  .execute()
+            : [];
+        const productoNombreById = new Map(productos.map((p: any) => [p.id, p.nombre]));
+
+        const printableItems = itemsProcessed
+            .map((processed, index) => {
+                const inputItem = items[index];
+
+                const cantidad = onlyDeltas
+                    ? (deltasByIndex?.get(index) || 0)
+                    : Number(processed.cantidad);
+
+                if (onlyDeltas && cantidad <= 0) return null;
+
+                // Nombre producto
+                const productoNombre =
+                    inputItem?.producto?.nombre ||
+                    inputItem?.producto_nombre ||
+                    productoNombreById.get(processed.producto_id) ||
+                    'Producto';
+
+                // Personalizaciones: flatten de IDs a nombres
+                const personalizaciones: string[] = [];
+                const personalizacion = inputItem?.personalizacion;
+                if (personalizacion && typeof personalizacion === 'object') {
+                    Object.entries(personalizacion).forEach(([key, val]) => {
+                        if (key === 'precio_adicional') return;
+                        const pushId = (id: any) => {
+                            if (typeof id !== 'string') return;
+                            const info = personalizacionInfo.get(id);
+                            if (info?.nombre) personalizaciones.push(info.nombre);
+                        };
+                        if (typeof val === 'string') pushId(val);
+                        else if (Array.isArray(val)) val.forEach(pushId);
+                    });
+                }
+
+                return {
+                    producto_id: processed.producto_id,
+                    nombre: productoNombre,
+                    cantidad,
+                    observaciones: inputItem?.observaciones || null,
+                    personalizaciones
+                };
+            })
+            .filter(Boolean);
+
+        return {
+            version: 1,
+            comandaId,
+            tipo_pedido: tipoPedido,
+            mesas: mesaIds.map((id) => ({ id, numero: mesaNumeroById.get(id) || '' })),
+            cliente: cliente || null,
+            usuario: { id: usuarioId, nombre: usuarioNombre },
+            observaciones_generales: observaciones,
+            items: printableItems,
+            generado_en: new Date().toISOString()
+        };
     }
 
     async crearComanda(
@@ -86,7 +212,7 @@ export class ComandaService {
             const tipoPedido = datos.tipoPedido || datos.tipo_pedido || 'mesa';
             const observaciones = datos.observaciones || datos.observaciones_generales || null;
 
-            const { itemsProcessed, subtotal } = await this.buildItemsProcessed(items, empresaId, trx);
+            const { itemsProcessed, subtotal, personalizacionInfo } = await this.buildItemsProcessed(items, empresaId, trx);
 
             // 2. Decrement Inventory (Ingredients) - This throws if insufficient
             // Pass the transaction 'trx' to ensure atomicity
@@ -134,6 +260,39 @@ export class ComandaService {
                 trx // Pass transaction
             );
 
+            // 5. Encolar impresión remota (best-effort, no bloquea creación de comanda)
+            try {
+                const printerId = await this.printService.getDefaultPrinterId(empresaId, trx as any);
+                if (printerId) {
+                    const payload = await this.buildKitchenTicketPayload({
+                        empresaId,
+                        usuarioId,
+                        comandaId,
+                        tipoPedido,
+                        mesaIds,
+                        cliente,
+                        observaciones,
+                        items,
+                        itemsProcessed,
+                        personalizacionInfo,
+                        trx
+                    });
+
+                    await this.printService.createPrintJob(
+                        {
+                            empresaId,
+                            printerId,
+                            externalId: comandaId,
+                            type: 'kitchen_ticket',
+                            payload
+                        },
+                        trx as any
+                    );
+                }
+            } catch (printErr) {
+                console.warn('[PRINT] No se pudo encolar impresión para comanda', printErr);
+            }
+
             return { id: comandaId, total: subtotal };
         });
     }
@@ -179,7 +338,7 @@ export class ComandaService {
             const existingById = new Map(existingItems.map(i => [i.id, i]));
             const incomingExistingIds = new Set<string>();
 
-            const { itemsProcessed, subtotal } = await this.buildItemsProcessed(items, empresaId, trx);
+            const { itemsProcessed, subtotal, personalizacionInfo } = await this.buildItemsProcessed(items, empresaId, trx);
 
             const itemsToConsume: Array<{ producto_id: string; cantidad: number; personalizacion?: any }> = [];
             const updates: Array<{ id: string; data: any }> = [];
@@ -281,6 +440,66 @@ export class ComandaService {
                 .where('id', '=', comandaId)
                 .where('empresa_id', '=', empresaId)
                 .execute();
+
+            // Encolar impresión por edición (si el frontend lo solicitó)
+            const imprimirAdicionales = Boolean(datos?.imprimir);
+            const imprimirCompleta = Boolean(datos?.imprimirCompleta);
+
+            if (imprimirAdicionales || imprimirCompleta) {
+                try {
+                    const printerId = await this.printService.getDefaultPrinterId(empresaId, trx as any);
+                    if (printerId) {
+                        const mesasRows = await trx
+                            .selectFrom('comanda_mesas')
+                            .select(['mesa_id'])
+                            .where('comanda_id', '=', comandaId)
+                            .where('empresa_id', '=', empresaId)
+                            .execute();
+                        const mesaIds = mesasRows.map((m: any) => m.mesa_id);
+
+                        const deltasByIndex = new Map<number, number>();
+                        if (!imprimirCompleta) {
+                            // calcular deltas por index usando existingById (qty anterior)
+                            items.forEach((item: any, index: number) => {
+                                const processed = itemsProcessed[index];
+                                const existing = existingById.get(item.id);
+                                const anterior = existing ? Number(existing.cantidad) : 0;
+                                const delta = Number(processed.cantidad) - anterior;
+                                if (delta > 0) deltasByIndex.set(index, delta);
+                            });
+                        }
+
+                        const payload = await this.buildKitchenTicketPayload({
+                            empresaId,
+                            usuarioId,
+                            comandaId,
+                            tipoPedido: comanda.tipo_pedido,
+                            mesaIds,
+                            cliente: comanda.datos_cliente,
+                            observaciones: observaciones ?? comanda.observaciones,
+                            items,
+                            itemsProcessed,
+                            personalizacionInfo,
+                            trx,
+                            onlyDeltas: !imprimirCompleta,
+                            deltasByIndex
+                        });
+
+                        await this.printService.createPrintJob(
+                            {
+                                empresaId,
+                                printerId,
+                                externalId: `${comandaId}:${imprimirCompleta ? 'full' : 'delta'}:${Date.now()}`,
+                                type: 'kitchen_ticket',
+                                payload
+                            },
+                            trx as any
+                        );
+                    }
+                } catch (printErr) {
+                    console.warn('[PRINT] No se pudo encolar impresión por edición', printErr);
+                }
+            }
 
             return { success: true, total: subtotal };
         });

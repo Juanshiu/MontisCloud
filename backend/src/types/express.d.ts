@@ -19,6 +19,10 @@ declare global {
   namespace Express {
     interface Request {
       context: RequestContext;
+      printContext?: {
+        printerId: string;
+        empresaId: string;
+      };
     }
   }
 }

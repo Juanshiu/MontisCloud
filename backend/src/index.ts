@@ -37,6 +37,7 @@ import nominaRoutes from './routes/nomina';
 import contratosRoutes from './routes/contratos';
 import controlAccesoRoutes from './routes/control-acceso';
 import adminRoutes from './routes/admin'; // Panel Master Admin SaaS
+import printRoutes from './routes/print';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -117,6 +118,7 @@ app.use('/api/insumo-categorias', insumoCategoriasRoutes);
 app.use('/api/empleados', empleadosRoutes);
 app.use('/api/nomina', nominaRoutes);
 app.use('/api/contratos', contratosRoutes);
+app.use('/api/print', printRoutes);
 
 app.get('/health', async (req, res) => {
   try {

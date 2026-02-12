@@ -23,6 +23,9 @@ export interface Database {
   permisos: PermisosTable
   permisos_rol: PermisosRolTable
   licencias: LicenciasTable
+  printers: PrintersTable
+  print_jobs: PrintJobsTable
+  print_pairing_tokens: PrintPairingTokensTable
   salones: SalonesTable
   mesas: MesasTable
   categorias_productos: CategoriasProductosTable
@@ -116,6 +119,53 @@ export interface LicenciasTable {
   fecha_pausa: Timestamp | null // Fecha en que se pausó
   dias_pausados: Generated<number> // Días acumulados de pausa
   motivo_cambio: string | null // Motivo del último cambio
+  created_at: Generated<Timestamp>
+  updated_at: Generated<Timestamp>
+}
+
+// ==================== IMPRESIÓN REMOTA ====================
+
+export interface PrintersTable {
+  id: Generated<string>
+  empresa_id: string
+  name: string
+  api_key_hash: string
+  device_fingerprint: string | null
+  hostname: string | null
+  os_name: string | null
+  last_pairing_at: Timestamp | null
+  meta: ColumnType<Record<string, any> | null, Record<string, any> | null, Record<string, any> | null>
+  is_default: Generated<boolean>
+  activo: Generated<boolean>
+  last_seen_at: Timestamp | null
+  created_at: Generated<Timestamp>
+  updated_at: Generated<Timestamp>
+}
+
+export interface PrintPairingTokensTable {
+  id: Generated<string>
+  empresa_id: string
+  token_hash: string
+  alias: string | null
+  expires_at: Timestamp
+  used_at: Timestamp | null
+  used_by_printer_id: string | null
+  created_by_usuario_id: string | null
+  created_at: Generated<Timestamp>
+}
+
+export interface PrintJobsTable {
+  id: Generated<string>
+  printer_id: string
+  empresa_id: string
+  external_id: string
+  type: string
+  payload: ColumnType<Record<string, any>, Record<string, any>, Record<string, any>>
+  status: Generated<string>
+  attempts: Generated<number>
+  last_error: string | null
+  info: string | null
+  printed_at: Timestamp | null
   created_at: Generated<Timestamp>
   updated_at: Generated<Timestamp>
 }
