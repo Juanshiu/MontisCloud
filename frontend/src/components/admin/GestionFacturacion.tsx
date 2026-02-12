@@ -9,6 +9,15 @@ import { printingService } from '@/services/printingService';
 export default function GestionFacturacion() {
   const [config, setConfig] = useState<ConfiguracionFacturacion | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Impresión remota (agente)
+  const [remotePrinters, setRemotePrinters] = useState<any[]>([]);
+  const [remoteLoading, setRemoteLoading] = useState(false);
+  const [newPrinterName, setNewPrinterName] = useState('');
+  const [registeringRemote, setRegisteringRemote] = useState(false);
+  const [pairingInfo, setPairingInfo] = useState<{ activationCode: string; expiresAt: string } | null>(null);
+  const [selectedRemotePrinterId, setSelectedRemotePrinterId] = useState<string>('');
+  const [remoteJobs, setRemoteJobs] = useState<any[]>([]);
   
   // Estado para impresión local
   const [pluginStatus, setPluginStatus] = useState<'checking' | 'online' | 'offline'>('checking');
@@ -21,6 +30,7 @@ export default function GestionFacturacion() {
   useEffect(() => {
     cargarConfiguracion();
     checkPlugin();
+    cargarImpresorasRemotas();
     
     // Cargar impresora guardada
     const savedPrinter = localStorage.getItem('printer_cocina_local');
@@ -34,6 +44,52 @@ export default function GestionFacturacion() {
     const savedFontSize = localStorage.getItem('font_size_cocina') as 'small' | 'normal' | 'large';
     if (savedFontSize) setFontSize(savedFontSize);
   }, []);
+
+  const cargarImpresorasRemotas = async () => {
+    try {
+      setRemoteLoading(true);
+      const printers = await apiService.listRemotePrinters();
+      setRemotePrinters(printers);
+
+      if (!selectedRemotePrinterId && printers?.[0]?.id) {
+        setSelectedRemotePrinterId(printers[0].id);
+      }
+    } catch (e) {
+      // Silencioso: si no hay permiso o no existe feature, no bloqueamos la vista
+      console.error('Error cargando impresoras remotas:', e);
+    } finally {
+      setRemoteLoading(false);
+    }
+  };
+
+  const generarCodigoActivacion = async () => {
+    if (!newPrinterName.trim()) return;
+    try {
+      setRegisteringRemote(true);
+      setPairingInfo(null);
+      const data = await apiService.createRemotePairingToken({
+        alias: newPrinterName.trim(),
+        ttlMinutes: 10
+      });
+      setPairingInfo(data);
+      setNewPrinterName('');
+      await cargarImpresorasRemotas();
+    } catch (e) {
+      console.error('Error generando código de activación:', e);
+    } finally {
+      setRegisteringRemote(false);
+    }
+  };
+
+  const cargarColaRemota = async () => {
+    if (!selectedRemotePrinterId) return;
+    try {
+      const jobs = await apiService.listRemotePrintJobs({ printerId: selectedRemotePrinterId, status: 'pending', limit: 20 });
+      setRemoteJobs(jobs);
+    } catch (e) {
+      console.error('Error cargando cola remota:', e);
+    }
+  };
 
   const checkPlugin = async () => {
     setPluginStatus('checking');
@@ -144,7 +200,7 @@ ${separador}
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-secondary-900 flex items-center gap-2">
             <Printer size={20} className="text-primary-600" />
-            Configuración de Impresora (Cocina/Ticket)
+            Configuración de Impresora Local (Opcional)
           </h3>
           <button 
             onClick={checkPlugin}
@@ -177,7 +233,7 @@ ${separador}
                 <p className="text-sm text-secondary-600">
                   {pluginStatus === 'online' 
                     ? 'El sistema puede enviar impresiones locales.' 
-                    : 'Asegúrese de ejecutar el plugin local en este equipo.'}
+                    : 'Solo aplica para impresión local legacy en este equipo. Si usa Impresión Remota, puede ignorarlo.'}
                 </p>
               </div>
             </div>
@@ -268,6 +324,136 @@ ${separador}
               return anchoReal;
             })()} caracteres efectivos) y fuente {fontSize === 'small' ? 'pequeña' : fontSize === 'large' ? 'grande (x2)' : 'normal'}.
           </p>
+        </div>
+      </div>
+
+      {/* Impresión Remota (Agente) */}
+      <div className="bg-white rounded-xl shadow-sm border border-secondary-200 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-secondary-900 flex items-center gap-2">
+            <Printer size={20} className="text-primary-600" />
+            Impresión Remota (Agente en PC de Cocina)
+          </h3>
+          <button
+            onClick={cargarImpresorasRemotas}
+            className="p-2 text-secondary-500 hover:text-primary-600 hover:bg-secondary-50 rounded-full transition-colors"
+            title="Actualizar listado"
+          >
+            <RefreshCw size={18} className={remoteLoading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-secondary-700 mb-1">Alias de impresora (ej: Cocina Principal)</label>
+              <input
+                value={newPrinterName}
+                onChange={(e) => setNewPrinterName(e.target.value)}
+                className="block w-full rounded-lg border-secondary-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                placeholder="Ej: Cocina Principal"
+              />
+            </div>
+            <div className="flex items-end gap-3">
+              <button
+                onClick={generarCodigoActivacion}
+                disabled={!newPrinterName.trim() || registeringRemote}
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 font-medium"
+              >
+                {registeringRemote ? '...' : 'Generar código'}
+              </button>
+            </div>
+          </div>
+
+          {pairingInfo && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-900">
+              <p className="font-semibold">Código de activación (válido 10 minutos):</p>
+              <p className="mt-1 text-lg tracking-wide"><strong>{pairingInfo.activationCode}</strong></p>
+              <p className="mt-1 text-xs">Expira: {new Date(pairingInfo.expiresAt).toLocaleString()}</p>
+              <p className="mt-2 text-xs text-amber-800">
+                El cliente solo debe abrir <strong>montis-printer-agent.exe</strong> e ingresar este código.
+              </p>
+            </div>
+          )}
+
+          <div className="border border-secondary-200 rounded-lg overflow-hidden">
+            <div className="bg-secondary-50 px-4 py-2 text-sm font-medium text-secondary-700">Impresoras registradas</div>
+            <div className="p-4 space-y-3">
+              {remotePrinters.length === 0 ? (
+                <p className="text-sm text-secondary-500">No hay impresoras registradas en la nube para esta empresa.</p>
+              ) : (
+                <>
+                  <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm text-secondary-700">Seleccionar</label>
+                      <select
+                        value={selectedRemotePrinterId}
+                        onChange={(e) => setSelectedRemotePrinterId(e.target.value)}
+                        className="rounded-lg border-secondary-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                      >
+                        {remotePrinters.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}{p.is_default ? ' (default)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      onClick={cargarColaRemota}
+                      disabled={!selectedRemotePrinterId}
+                      className="px-4 py-2 bg-secondary-100 text-secondary-700 rounded-lg hover:bg-secondary-200 disabled:opacity-50 font-medium"
+                    >
+                      Ver cola (pending)
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {remotePrinters.map((p) => {
+                      const lastSeen = p.last_seen_at ? new Date(p.last_seen_at) : null;
+                      const online = lastSeen ? (Date.now() - lastSeen.getTime() < 90_000) : false;
+                      return (
+                        <div key={p.id} className="flex items-center justify-between text-sm border border-secondary-200 rounded-lg px-3 py-2">
+                          <div>
+                            <p className="font-medium text-secondary-900">{p.name}</p>
+                            <p className="text-xs text-secondary-500 break-all">{p.id}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className={`font-medium ${online ? 'text-green-700' : 'text-secondary-500'}`}>
+                              {online ? 'ONLINE' : 'OFFLINE'}
+                            </p>
+                            <p className="text-xs text-secondary-500">
+                              {lastSeen ? `Último: ${lastSeen.toLocaleString()}` : 'Sin heartbeat'}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {remoteJobs.length > 0 && (
+                    <div className="mt-3 bg-secondary-50 border border-secondary-200 rounded-lg p-3">
+                      <p className="text-sm font-medium text-secondary-800">Jobs pendientes ({remoteJobs.length})</p>
+                      <div className="mt-2 space-y-2 text-xs">
+                        {remoteJobs.map((j) => (
+                          <div key={j.id} className="flex items-center justify-between bg-white border border-secondary-200 rounded px-2 py-1">
+                            <span className="truncate">{j.external_id}</span>
+                            <span className="text-secondary-500">{j.created_at ? new Date(j.created_at).toLocaleTimeString() : ''}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+            <p>
+              La impresión remota funciona cuando un PC (normalmente cocina) ejecuta el agente y mantiene heartbeat.
+              Las comandas se encolan desde el backend automáticamente.
+            </p>
+          </div>
         </div>
       </div>
 

@@ -625,6 +625,26 @@ export const apiService = {
     const response = await api.get('/nomina/configuracion');
     return response.data;
   },
+  
+    // ==================== IMPRESIÓN REMOTA (AGENTE) ====================
+    async createRemotePairingToken(data?: { alias?: string; ttlMinutes?: number }): Promise<{ activationCode: string; expiresAt: string }> {
+      const response = await api.post('/print/pairing-token', data || {});
+      return response.data;
+    },
+  
+    async listRemotePrinters(): Promise<any[]> {
+      const response = await api.get('/print/printers');
+      return response.data?.printers || [];
+    },
+  
+    async listRemotePrintJobs(params?: { printerId?: string; status?: string; limit?: number }): Promise<any[]> {
+      const qs = new URLSearchParams();
+      if (params?.printerId) qs.append('printerId', params.printerId);
+      if (params?.status) qs.append('status', params.status);
+      if (params?.limit) qs.append('limit', String(params.limit));
+      const response = await api.get(`/print/jobs${qs.toString() ? `?${qs.toString()}` : ''}`);
+      return response.data?.jobs || [];
+    },
 
   async updateConfiguracionNomina(config: Partial<ConfiguracionNomina>): Promise<ConfiguracionNomina> {
     const response = await api.put('/nomina/configuracion', config);
