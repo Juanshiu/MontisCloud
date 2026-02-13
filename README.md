@@ -228,14 +228,14 @@ Plataforma completa desarrollada con React/Next.js (frontend) y Node.js/Express 
 
 ### 🖨️ Sistema de Impresión Profesional y Configurable
 
-**Plugin HTTP Propio (Puerto 8001):**
-- 🚀 **Servidor Python Local**: Sin dependencias en la nube, sin marcas de agua
-- 🔌 **API HTTP Simple**: Endpoint POST para envío de comandos de impresión
-- 🖨️ **Soporte ESC/POS Nativo**: Control total de impresoras térmicas de 58mm y 80mm
-- 🔧 **Instalación Sencilla**: Script de compilación a EXE para Windows
-- 💾 **Configuración Persistente**: LocalStorage guarda preferencias de impresión
-- 🔄 **Auto-Detección**: Lista automática de impresoras disponibles en el sistema
-- 🛡️ **Fallback Robusto**: Log en consola si el plugin no está disponible
+**Agente Remoto de Impresión (SaaS, recomendado):**
+- 🚀 **Ejecutable Windows (`montis-printer-agent.exe`)**: Cliente liviano para PCs con impresora
+- 🔐 **Activación por código temporal**: Pairing seguro desde Admin sin exponer API keys al cliente
+- 🖨️ **Selector explícito de impresora**: Lista desplegable con impresoras instaladas para evitar selección incorrecta
+- 💾 **Estado local cifrado (DPAPI)**: Credenciales guardadas de forma segura en el equipo
+- 🔄 **Operación en segundo plano**: Autoarranque en Windows + heartbeat/polling contra backend
+- 🛠️ **Reconfiguración fácil**: Se puede reabrir el `.exe` para cambiar impresora sin reinstalar
+- 🧩 **Modo legacy opcional**: `server.py` en puerto 8001 disponible solo para integraciones antiguas
 
 **Configuración de Papel (58mm vs 80mm):**
 
@@ -665,16 +665,19 @@ Sistema-de-comandas-Casa-Montis/
 │   ├── package.json                      # Dependencias del backend
 │   └── tsconfig.json                     # Config de TypeScript
 │
-├── 📂 local-print-plugin/                 # 🖨️ Plugin de Impresión HTTP (Python)
+├── 📂 local-print-plugin/                 # 🖨️ Agente remoto de impresión (Python/Windows)
 │   ├── build/                            # Carpeta de compilación PyInstaller
-│   │   └── CasaMontis-PrintPlugin/       # Archivos intermedios de build
+│   │   ├── montis-printer-agent/         # Archivos intermedios del agente
+│   │   └── CasaMontis-PrintPlugin/       # Build legacy (compatibilidad)
 │   │
-│   ├── server.py                         # Servidor Flask en puerto 8001
+│   ├── printer_agent.py                  # Agente remoto con UI de activación
+│   ├── montis-printer-agent.spec         # Spec PyInstaller del agente
+│   ├── server.py                         # Servidor HTTP local (modo legacy)
 │   ├── server_backup.js                  # Backup legacy en Node.js
-│   ├── test_plugin.py                    # Tests del plugin
-│   ├── build_exe.py                      # Script para compilar a EXE
-│   ├── CasaMontis-PrintPlugin.spec       # Spec para PyInstaller
-│   ├── requirements.txt                  # Dependencias Python (flask, pywin32)
+│   ├── test_plugin.py                    # Pruebas del entorno de impresión
+│   ├── build_exe.py                      # Script para compilar `montis-printer-agent.exe`
+│   ├── CasaMontis-PrintPlugin.spec       # Spec legacy
+│   ├── requirements.txt                  # Dependencias Python (requests, pywin32, etc.)
 │   ├── .gitignore                        # Archivos ignorados
 │   ├── README.md                         # Documentación del plugin
 │   │
@@ -718,7 +721,7 @@ Sistema-de-comandas-Casa-Montis/
 
 **Software Opcional:**
 - 🖨️ **Impresora Térmica ESC/POS** (58mm o 80mm)
-- 🐍 **Python 3.9+** (para plugin de impresión local)
+- 🐍 **Python 3.9+** (para compilar/agendar el agente de impresión)
 - 📄 **pgAdmin 4** (para administrar PostgreSQL visualmente)
 
 ---
@@ -768,9 +771,9 @@ setup_completo.bat
 1. ✅ Instalar dependencias de backend (npm install)
 2. ✅ Instalar dependencias de frontend (npm install)
 3. ✅ Instalar dependencias de admin-panel (npm install)
-4. ✅ Instalar dependencias del plugin Python (pip install)
+4. ✅ Instalar dependencias del agente de impresión (pip install)
 5. ✅ Ejecutar migraciones de base de datos
-6. ✅ Iniciar plugin de impresión (puerto 8001)
+6. ✅ Dejar listo el servicio de impresión local (agente remoto o modo legacy, según configuración)
 7. ✅ Iniciar backend (puerto 3001)
 8. ✅ Iniciar frontend (puerto 3000)
 9. ✅ Iniciar admin-panel (puerto 3002)
@@ -787,7 +790,7 @@ iniciador_automatico.bat
 - 🚀 Iniciar backend en modo desarrollo (puerto 3001)
 - 🚀 Iniciar frontend en modo desarrollo (puerto 3000)
 
-**Nota:** Para incluir admin-panel y plugin de impresión en el inicio rápido, usa `setup_completo.bat`
+**Nota:** Para incluir admin-panel y componente de impresión en el inicio rápido, usa `setup_completo.bat`
 
 ---
 
@@ -876,6 +879,7 @@ npm start
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:3001/api
+# Legacy opcional (solo si usas server.py en puerto 8001)
 NEXT_PUBLIC_PRINT_PLUGIN_URL=http://localhost:8001
 ```
 
@@ -915,7 +919,7 @@ NEXT_PUBLIC_API_URL=http://localhost:3001
 NODE_ENV=development
 ```
 
-#### 5️⃣ **Plugin de Impresión (Python + Flask)**
+#### 5️⃣ **Agente de Impresión Remota (Recomendado para SaaS)**
 
 ```bash
 cd local-print-plugin
@@ -926,29 +930,35 @@ cd local-print-plugin
 # Instalar dependencias
 pip install -r requirements.txt
 
-# Iniciar plugin
-python server.py
+# Compilar agente a EXE
+python build_exe.py
 ```
 
-**O usar el script de Windows:**
-
-```bash
-INICIAR_PLUGIN.bat
-```
-
-**O compilar a EXE para distribución:**
+**O usar script de Windows para compilar:**
 
 ```bash
 COMPILAR_A_EXE.bat
 ```
 
-El EXE compilado estará en `build/CasaMontis-PrintPlugin/CasaMontis-PrintPlugin.exe`
+**El ejecutable compilado estará en:**
 
-**Configuración del Plugin:**
-- 🔌 **Puerto**: 8001
-- 🖨️ **Endpoint**: `POST http://localhost:8001/imprimir`
-- 📝 **Body**: JSON con `{ "printer": "nombre_impresora", "text": "contenido_a_imprimir" }`
-- 📋 **Listar impresoras**: `GET http://localhost:8001/printers`
+`dist/montis-printer-agent.exe`
+
+**Flujo de activación del agente:**
+- 1) Desde Admin generar código temporal en Impresión Remota
+- 2) Ejecutar `montis-printer-agent.exe`
+- 3) Pegar código y seleccionar impresora en la lista desplegable
+- 4) Confirmar activación (queda en segundo plano y autoarranque)
+
+**Endpoints usados por el agente (contra backend):**
+- `POST /api/print/pairing-token` (admin)
+- `POST /api/print/pair` (agente)
+- `GET /api/print/jobs` (polling)
+- `POST /api/print/jobs/:id/ack` (confirmación de impresión)
+- `POST /api/print/printers/:id/heartbeat` (online/offline)
+
+**Modo legacy opcional (solo integración antigua):**
+- Ejecutar `python server.py` para exponer `http://localhost:8001`
 
 ---
 
@@ -980,7 +990,8 @@ npm start
 ```env
 # frontend/.env.production
 NEXT_PUBLIC_API_URL=https://tu-backend-en-produccion.com
-NEXT_PUBLIC_PRINT_PLUGIN_URL=http://localhost:8001  # Solo para PC local con impresora
+# Solo si usas modo legacy con server.py
+NEXT_PUBLIC_PRINT_PLUGIN_URL=http://localhost:8001
 ```
 
 2. **Admin Panel:** Configurar URL del backend
@@ -995,10 +1006,10 @@ NODE_ENV=production
    - Netlify, Railway, Render también funcionan
    - Configurar variables de entorno en dashboard de la plataforma
 
-**Plugin de Impresión (Local):**
-- El plugin debe seguir ejecutándose localmente en las PCs con impresoras térmicas
-- No se puede hostear en la nube (requiere acceso USB a impresoras físicas)
-- Compilar a EXE con `COMPILAR_A_EXE.bat` para distribución
+**Agente de Impresión (Local):**
+- El agente debe ejecutarse localmente en las PCs con impresoras térmicas
+- No se hostea en la nube (requiere acceso al spooler/USB local)
+- Distribuir `montis-printer-agent.exe` y activar con código desde admin
 
 #### Plataformas Recomendadas
 
@@ -1008,7 +1019,7 @@ NODE_ENV=production
 | **PostgreSQL** | Railway (incluido), Render | $0-7/mes |
 | **Frontend** | Vercel, Netlify | Gratis |
 | **Admin Panel** | Vercel, Netlify | Gratis |
-| **Plugin Impresión** | Local (PC con impresora) | $0 |
+| **Agente Impresión** | Local (PC con impresora) | $0 |
 
 #### Checklist de Producción
 
@@ -1021,7 +1032,7 @@ NODE_ENV=production
 - [ ] Migraciones ejecutadas en BD de producción
 - [ ] CORS configurado correctamente en backend
 - [ ] HTTPS habilitado (automático en Vercel/Netlify)
-- [ ] Plugin de impresión instalado en PCs locales
+- [ ] Agente de impresión instalado y activado en PCs locales
 
 ---
 
@@ -1053,7 +1064,7 @@ Get-Printer | Select-Object Name
 **4. Probar impresión:**
 - Click en botón "Probar Impresora"
 - Debe salir ticket de prueba con configuración actual
-- Si falla, verificar que plugin esté corriendo en puerto 8001
+- Si falla, verificar que `montis-printer-agent.exe` esté activo en segundo plano
 
 ---
 
@@ -1083,10 +1094,10 @@ npm run dev
 cd admin-panel
 npm run dev
 
-# Terminal 4: Plugin de Impresión (puerto 8001)
+# Terminal 4: Compilar agente de impresión (primera vez)
 cd local-print-plugin
-python server.py
-# O ejecutar: INICIAR_PLUGIN.bat
+python build_exe.py
+# Luego ejecutar dist\montis-printer-agent.exe
 ```
 
 ---
@@ -1114,7 +1125,7 @@ COMPILAR_A_EXE.bat
 cd backend && npm start
 cd frontend && npm start
 cd admin-panel && npm start
-# Ejecutar CasaMontis-PrintPlugin.exe
+# Ejecutar montis-printer-agent.exe
 ```
 
 ---
@@ -1127,8 +1138,7 @@ cd admin-panel && npm start
 | **Admin Panel** | http://localhost:3002 | Panel de administración |
 | **API Backend** | http://localhost:3001/api | API RESTful |
 | **Health Check** | http://localhost:3001/health | Estado del servidor |
-| **Print Plugin** | http://localhost:8001 | Plugin de impresión |
-| **Printers List** | http://localhost:8001/printers | Lista de impresoras |
+| **Agente de Impresión** | Sin URL pública (app Windows) | Pairing + polling al backend |
 
 ---
 
@@ -1400,10 +1410,12 @@ POST /api/auth/login
 - `GET /api/personalizaciones/opciones` - Obtener opciones por categoría
 - `POST /api/personalizaciones/opciones` - Crear opción
 
-### Plugin de Impresión (Puerto 8001)
-- `POST /imprimir` - Imprimir contenido con encoding CP850
-- `POST /probar` - Probar impresora con texto de ejemplo
-- `GET /status` - Estado del servicio de impresión
+### Impresión Remota SaaS (Agente + Backend)
+- `POST /api/print/pairing-token` - Generar código temporal de activación (admin)
+- `POST /api/print/pair` - Emparejar agente con código (sin login de usuario)
+- `GET /api/print/jobs` - Obtener trabajos pendientes por impresora
+- `POST /api/print/jobs/:id/ack` - Confirmar impreso o reportar fallo
+- `POST /api/print/printers/:id/heartbeat` - Reportar estado ONLINE/OFFLINE
 
 ## 💡 Flujo de Trabajo Detallado
 
@@ -1460,16 +1472,19 @@ POST /api/auth/login
 
 ### 🖨️ Sistema de Impresión
 
-El sistema utiliza un **plugin HTTP propio** que garantiza la impresión correcta de caracteres especiales del español:
+El sistema utiliza un **agente remoto de impresión (`montis-printer-agent.exe`)** que garantiza impresión estable en SaaS sin abrir puertos locales:
 
-**Características del Plugin:**
-- **Puerto dedicado**: 8001 (separado del backend principal)
+**Características del Agente:**
+- **Activación por código temporal** desde el panel admin
+- **Selección manual de impresora** con listado de impresoras instaladas
+- **Estado cifrado local** (DPAPI) con `printerId` + `apiKey`
+- **Heartbeat + polling** contra `/api/print/*` para recibir y confirmar trabajos
+- **Autoarranque en Windows** y operación silenciosa en segundo plano
+- **Reapertura de UI** para cambiar impresora sin reinstalar
 - **Encoding**: CP850 (Code Page 850)
 - **Comando ESC/POS**: `ESC t 2` (selecciona tabla de caracteres CP850)
 - **Soporte completo**: á é í ó ú Á É Í Ó Ú ñ Ñ ¿ ¡
 - **Sin marcas de agua** ni limitaciones de software externo
-- **Transmisión binaria**: `copy /b` preserva bytes exactos
-- **Auto-inicio**: Se inicia automáticamente con el backend
 
 **Tipos de Impresión:**
 - **Comanda Completa**: Imprime todos los items de una comanda nueva
@@ -1601,12 +1616,13 @@ El sistema incluye un panel completo de administración accesible desde la inter
 
 ### Sistema de Impresión Propio
 
-El sistema incluye un plugin HTTP completamente autónomo:
+El sistema incluye un agente remoto para SaaS y mantiene un modo HTTP legacy para compatibilidad:
 
 **Características Técnicas:**
-- **Archivo**: `backend/modelo_imprimir_legacy/pluginImpresora.ts`
-- **Puerto**: 8001 (configurable)
-- **Protocolo**: HTTP POST con body en texto plano
+- **Agente principal**: `local-print-plugin/printer_agent.py`
+- **Ejecutable**: `local-print-plugin/dist/montis-printer-agent.exe`
+- **Transporte principal**: polling seguro sobre `/api/print/*` (sin puertos locales)
+- **Compatibilidad legacy**: `local-print-plugin/server.py` (HTTP local puerto 8001)
 - **Encoding**: CP850 (Code Page 850) - Estándar para español
 - **Sin dependencias externas**: No requiere software de terceros
 
@@ -1637,15 +1653,16 @@ Cualquier impresora térmica de 58mm o 80mm con soporte ESC/POS:
 
 1. **Conectar impresora vía USB**
 2. **Instalar drivers** (Windows normalmente los detecta automáticamente)
-3. **Identificar nombre**: Panel de Control → Dispositivos e impresoras
-4. **Configurar en el Panel de Administración**: Seleccionar impresora del dropdown y guardar
+3. **Abrir `montis-printer-agent.exe`** y seleccionar la impresora en el desplegable
+4. **Activar con código** generado desde Admin → Gestión de Facturación → Impresión Remota
 
 ### Solución de Problemas de Impresión
 
 **La impresora no imprime:**
 - Verificar que está encendida y conectada
-- Ver logs del plugin en puerto 8001: `http://localhost:8001/status`
-- Probar endpoint de prueba: `POST http://localhost:8001/probar`
+- Verificar que `montis-printer-agent.exe` esté activo en Administrador de tareas
+- Revisar log local del agente en `%APPDATA%/MontisPrinterAgent/agent.log`
+- Reabrir el `.exe` y confirmar impresora seleccionada
 
 **Caracteres raros o basura:**
 - Verificar encoding en .env (debe ser `cp850`)
@@ -1789,13 +1806,14 @@ Esquema para cadenas con múltiples ubicaciones:
 | **Compression** | 1.x | Compresión gzip de respuestas |
 | **Morgan** | 1.x | Logger de requests HTTP |
 
-### Plugin de Impresión
+### Agente de Impresión
 | Tecnología | Versión | Propósito |
 |------------|---------|-----------|
-| **Python** | 3.9+ | Lenguaje del plugin |
-| **Flask** | 2.x | Framework web para API |
-| **pywin32** | 305+ | Interacción con impresoras Windows |
-| **PyInstaller** | 5.x | Compilación a EXE |
+| **Python** | 3.9+ | Lenguaje del agente |
+| **requests** | 2.x | Comunicación con backend `/api/print/*` |
+| **pywin32** | 306+ | DPAPI + interacción con impresoras Windows |
+| **Tkinter** | builtin | UI de activación y selección de impresora |
+| **PyInstaller** | 6.x | Compilación a `montis-printer-agent.exe` |
 
 ### Desarrollo y Herramientas
 | Herramienta | Propósito |
