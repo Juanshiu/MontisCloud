@@ -112,6 +112,31 @@ export class NominaRepository {
             .executeTakeFirst();
     }
 
+    async listarNominasPeriodoEmpleado(empresaId: string, empleadoId: string, mes: number, anio: number) {
+        return await db
+            .selectFrom('nominas')
+            .selectAll()
+            .where('empresa_id', '=', empresaId)
+            .where('empleado_id', '=', empleadoId)
+            .where('mes', '=', mes)
+            .where('anio', '=', anio)
+            .orderBy('fecha', 'asc')
+            .orderBy('id', 'asc')
+            .execute();
+    }
+
+    async cerrarNominasAbiertasPeriodo(empresaId: string, empleadoId: string, mes: number, anio: number) {
+        return await db
+            .updateTable('nominas')
+            .set({ estado: 'CERRADA' })
+            .where('empresa_id', '=', empresaId)
+            .where('empleado_id', '=', empleadoId)
+            .where('mes', '=', mes)
+            .where('anio', '=', anio)
+            .where('estado', '=', 'ABIERTA')
+            .execute();
+    }
+
     // Actualizar nómina
     async actualizarNomina(id: string, empresaId: string, data: { monto_total: number; estado: string }) {
         return await db
@@ -157,7 +182,12 @@ export class NominaRepository {
             query = query.where('anio', '=', anio);
         }
         
-        return await query.orderBy('anio', 'desc').orderBy('mes', 'desc').execute();
+        return await query
+            .orderBy('anio', 'desc')
+            .orderBy('mes', 'desc')
+            .orderBy('fecha', 'desc')
+            .orderBy('id', 'desc')
+            .execute();
     }
 
     // Pagos de nómina

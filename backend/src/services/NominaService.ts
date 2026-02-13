@@ -256,39 +256,35 @@ export class NominaService {
     async guardarNominaDetalle(empresaId: string, data: any) {
         const calculo = await this.calcularNominaEmpleado(empresaId, data);
         
-        // Buscar si ya existe una nómina para este empleado/periodo
         const mesNumero = this.getMesNumero(data.periodo_mes);
-        const existente = await this.repo.buscarNominaExistente(
+        const versionesPeriodo = await this.repo.listarNominasPeriodoEmpleado(
             empresaId, 
             data.empleado_id, 
             mesNumero, 
             data.periodo_anio
         );
+        const version = versionesPeriodo.length + 1;
 
-        let nomina;
-        if (existente) {
-            // Actualizar existente
-            nomina = await this.repo.actualizarNomina(existente.id, empresaId, {
-                monto_total: calculo.neto_pagado,
-                estado: 'ABIERTA'
-            });
-        } else {
-            // Crear nueva
-            nomina = await this.repo.crearNomina({
-                empresa_id: empresaId,
-                empleado_id: data.empleado_id,
-                mes: mesNumero,
-                anio: data.periodo_anio,
-                fecha: new Date(),
-                monto_total: calculo.neto_pagado,
-                estado: 'ABIERTA'
-            });
-        }
+        await this.repo.cerrarNominasAbiertasPeriodo(
+            empresaId,
+            data.empleado_id,
+            mesNumero,
+            data.periodo_anio
+        );
 
-        // Guardar los detalles en la tabla de detalles
-        await this.repo.eliminarDetallesNomina(nomina.id, empresaId);
+        const nomina = await this.repo.crearNomina({
+            empresa_id: empresaId,
+            empleado_id: data.empleado_id,
+            mes: mesNumero,
+            anio: data.periodo_anio,
+            fecha: new Date(),
+            monto_total: calculo.neto_pagado,
+            estado: 'ABIERTA'
+        });
         
         const detalles = [
+            { tipo: 'META_DIAS_TRABAJADOS', descripcion: 'Días Trabajados', monto: calculo.dias_trabajados || 30 },
+            { tipo: 'META_VERSION', descripcion: 'Versión Nómina', monto: version },
             { tipo: 'SUELDO_BASE', descripcion: 'Sueldo Básico', monto: calculo.sueldo_basico },
             { tipo: 'AUX_TRANSPORTE', descripcion: 'Auxilio Transporte', monto: calculo.auxilio_transporte },
             { tipo: 'HORAS_EXTRAS', descripcion: 'Horas Extras Diurnas', monto: calculo.horas_extras_diurnas },
@@ -320,11 +316,13 @@ export class NominaService {
             detalle: {
                 ...calculo,
                 id: nomina.id,
-                estado: nomina.estado
+                estado: nomina.estado,
+                version,
+                pdf_version: version
             },
             pagos,
             saldo_pendiente: saldoPendiente,
-            info: existente ? 'Nómina actualizada correctamente' : 'Nómina guardada correctamente'
+            info: version > 1 ? `Nómina recalculada y guardada como versión ${version}` : 'Nómina guardada correctamente'
         };
     }
 
@@ -342,18 +340,25 @@ export class NominaService {
         const mesNumero = periodoMes ? this.getMesNumero(periodoMes) : undefined;
         
         const nominas = await this.repo.buscarNominasEmpleado(empresaId, empleadoId, mesNumero, periodoAnio);
+        const versionesPorNomina = this.construirMapaVersionesNomina(nominas as any[]);
+        const diasPorNomina = new Map<string, number>();
+        const netoPorNomina = new Map<string, number>();
         
         const nominasConDetalles = await Promise.all(
             nominas.map(async (n) => {
                 const detalles = await this.repo.obtenerDetallesNomina(n.id, empresaId);
                 const pagos = await this.repo.obtenerPagosNomina(n.id, empresaId);
                 const empleado = await this.repo.obtenerEmpleado(n.empleado_id, empresaId);
+                const version = versionesPorNomina.get(n.id) || 1;
                 
-                // Calcular total_devengado y total_deducciones desde los detalles
                 let total_devengado = 0;
                 let total_deducciones = 0;
                 
                 for (const det of detalles) {
+                    if (this.esDetalleMetadata(det.tipo)) {
+                        continue;
+                    }
+
                     const monto = Number(det.monto) || 0;
                     if (monto >= 0) {
                         total_devengado += monto;
@@ -363,26 +368,30 @@ export class NominaService {
                 }
                 
                 const neto_pagado = total_devengado - total_deducciones;
+                const dias_trabajados = this.obtenerDiasTrabajadosDesdeDetalles(detalles as any[]);
+
+                diasPorNomina.set(n.id, dias_trabajados);
+                netoPorNomina.set(n.id, neto_pagado);
                 
-                // Generar historial de cambios para esta nómina
                 const historialNomina: any[] = [];
-                
-                // Agregar evento de creación
                 historialNomina.push({
                     id: `${n.id}-creacion`,
                     nomina_detalle_id: n.id,
-                    version: 1,
+                    periodo_mes: this.getNombreMes(n.mes),
+                    periodo_anio: n.anio,
+                    version,
                     fecha: n.fecha,
-                    cambio: 'Creación de nómina mensual',
+                    cambio: version > 1 ? `Recalculo de nómina (versión ${version})` : 'Creación de nómina mensual',
                     usuario: 'Sistema'
                 });
                 
-                // Agregar eventos de pagos
                 for (const pago of pagos) {
                     historialNomina.push({
                         id: `${n.id}-pago-${pago.id}`,
                         nomina_detalle_id: n.id,
-                        version: 1,
+                        periodo_mes: this.getNombreMes(n.mes),
+                        periodo_anio: n.anio,
+                        version,
                         fecha: pago.fecha,
                         cambio: `Pago registrado: $${Number(pago.valor).toLocaleString('es-CO')} (${pago.tipo || 'QUINCENA'})`,
                         usuario: 'Sistema'
@@ -395,21 +404,60 @@ export class NominaService {
                     empleado_documento: empleado?.numero_documento || '',
                     periodo_mes: this.getNombreMes(n.mes),
                     periodo_anio: n.anio,
+                    dias_trabajados,
                     total_devengado,
                     total_deducciones,
                     neto_pagado,
-                    pdf_path: 'dynamic', // Indicar que el PDF se puede generar dinámicamente
-                    pdf_version: 1,
-                    version: 1,
-                    detalles,
+                    pdf_path: 'dynamic',
+                    pdf_version: version,
+                    version,
+                    detalles: detalles.filter((d) => !this.esDetalleMetadata(d.tipo)),
                     pagos_registrados: pagos,
                     historial_cambios: historialNomina
                 };
             })
         );
 
-        // Combinar todos los historiales
-        const todosHistoriales = nominasConDetalles.flatMap(n => n.historial_cambios || []);
+        const historialRecalculos: any[] = [];
+        for (const nomina of nominasConDetalles) {
+            if ((nomina.version || 1) <= 1) {
+                continue;
+            }
+
+            const versionAnteriorId = this.buscarNominaIdPorVersion(
+                nominas as any[],
+                nomina.empleado_id,
+                nomina.mes,
+                nomina.anio,
+                (nomina.version || 1) - 1,
+                versionesPorNomina
+            );
+
+            let cambio = `Recalculo de nómina a versión ${nomina.version}`;
+            if (versionAnteriorId) {
+                const diasPrevios = diasPorNomina.get(versionAnteriorId) || 30;
+                const netoPrevio = netoPorNomina.get(versionAnteriorId) || 0;
+                const diasActuales = diasPorNomina.get(nomina.id || '') || 30;
+                const netoActual = netoPorNomina.get(nomina.id || '') || 0;
+                cambio = `Recalculo v${nomina.version}: días ${diasPrevios}→${diasActuales}, neto $${Math.round(netoPrevio).toLocaleString('es-CO')}→$${Math.round(netoActual).toLocaleString('es-CO')}`;
+            }
+
+            historialRecalculos.push({
+                id: `${nomina.id}-recalculo-v${nomina.version}`,
+                nomina_detalle_id: nomina.id,
+                periodo_mes: nomina.periodo_mes,
+                periodo_anio: nomina.periodo_anio,
+                version: nomina.version,
+                fecha: nomina.fecha,
+                cambio,
+                usuario: 'Sistema'
+            });
+        }
+
+        const todosHistoriales = [
+            ...historialRecalculos,
+            ...nominasConDetalles.flatMap(n => n.historial_cambios || [])
+        ].sort((a, b) => new Date(b.fecha || 0).getTime() - new Date(a.fecha || 0).getTime());
 
         return {
             nominas: nominasConDetalles,
@@ -449,8 +497,18 @@ export class NominaService {
         const detallesMap: { [key: string]: number } = {};
         let total_devengado = 0;
         let total_deducciones = 0;
+        let dias_trabajados = 30;
 
         for (const det of nomina.detalles || []) {
+            if (det.tipo === 'META_DIAS_TRABAJADOS') {
+                dias_trabajados = Number(det.monto) || 30;
+                continue;
+            }
+
+            if (this.esDetalleMetadata(det.tipo)) {
+                continue;
+            }
+
             const monto = Number(det.monto) || 0;
             detallesMap[det.tipo] = Math.abs(monto);
             if (monto >= 0) {
@@ -465,7 +523,7 @@ export class NominaService {
             empleado_documento: empleado?.numero_documento || '',
             periodo_mes: this.getNombreMes(nomina.mes),
             periodo_anio: nomina.anio,
-            dias_trabajados: 30, // TODO: guardar en detalles si se requiere
+            dias_trabajados,
             sueldo_basico: detallesMap['SUELDO_BASE'] || 0,
             auxilio_transporte: detallesMap['AUX_TRANSPORTE'] || 0,
             horas_extras_diurnas: detallesMap['HORAS_EXTRAS'] || 0,
@@ -481,6 +539,59 @@ export class NominaService {
             total_deducciones,
             neto_pagado: total_devengado - total_deducciones
         }, empresa);
+    }
+
+    private esDetalleMetadata(tipo: string) {
+        return (tipo || '').startsWith('META_');
+    }
+
+    private obtenerDiasTrabajadosDesdeDetalles(detalles: Array<{ tipo: string; monto: number }>) {
+        const metaDias = detalles.find((d) => d.tipo === 'META_DIAS_TRABAJADOS');
+        return Number(metaDias?.monto) || 30;
+    }
+
+    private construirMapaVersionesNomina(nominas: any[]) {
+        const mapa = new Map<string, number>();
+        const agrupado = new Map<string, any[]>();
+
+        for (const nomina of nominas) {
+            const key = `${nomina.empleado_id}-${nomina.mes}-${nomina.anio}`;
+            if (!agrupado.has(key)) {
+                agrupado.set(key, []);
+            }
+            agrupado.get(key)!.push(nomina);
+        }
+
+        for (const lista of agrupado.values()) {
+            lista
+                .sort((a, b) => {
+                    const fechaA = new Date(a.fecha || 0).getTime();
+                    const fechaB = new Date(b.fecha || 0).getTime();
+                    if (fechaA !== fechaB) return fechaA - fechaB;
+                    return String(a.id).localeCompare(String(b.id));
+                })
+                .forEach((nomina, index) => {
+                    mapa.set(nomina.id, index + 1);
+                });
+        }
+
+        return mapa;
+    }
+
+    private buscarNominaIdPorVersion(
+        nominas: any[],
+        empleadoId: string,
+        mes: number,
+        anio: number,
+        versionObjetivo: number,
+        mapaVersiones: Map<string, number>
+    ) {
+        return nominas.find((n) =>
+            n.empleado_id === empleadoId &&
+            n.mes === mes &&
+            n.anio === anio &&
+            mapaVersiones.get(n.id) === versionObjetivo
+        )?.id;
     }
 
     // Generar PDF preview (sin guardar)
