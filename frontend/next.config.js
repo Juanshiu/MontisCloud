@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
-const backendUrl = process.env.BACKEND_INTERNAL_URL || 'http://localhost:3001';
+const rawBackendUrl = process.env.BACKEND_INTERNAL_URL || 'http://localhost:3001';
+const backendUrl = rawBackendUrl
+  .replace(/\/+$/, '')
+  .replace(/\/api$/, '');
 
 const nextConfig = {
   reactStrictMode: true,
