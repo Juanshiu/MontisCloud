@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { FileText, Building2, Printer, RefreshCw } from 'lucide-react';
 import apiService from '@/services/api';
-import { ConfiguracionFacturacion } from '@/types';
+import { ConfiguracionFacturacion, FormularioComanda } from '@/types';
+import { generateComandaReceipt } from '@/utils/receiptFormatter';
 
 export default function GestionFacturacion() {
   const [config, setConfig] = useState<ConfiguracionFacturacion | null>(null);
@@ -15,6 +16,7 @@ export default function GestionFacturacion() {
   const [newPrinterName, setNewPrinterName] = useState('');
   const [registeringRemote, setRegisteringRemote] = useState(false);
   const [pairingInfo, setPairingInfo] = useState<{ activationCode: string; expiresAt: string } | null>(null);
+  const [pairingTimeLeftMs, setPairingTimeLeftMs] = useState<number | null>(null);
   const [selectedRemotePrinterId, setSelectedRemotePrinterId] = useState<string>('');
   const [remoteJobs, setRemoteJobs] = useState<any[]>([]);
   const [remoteTesting, setRemoteTesting] = useState(false);
@@ -26,6 +28,118 @@ export default function GestionFacturacion() {
     cargarConfiguracion();
     cargarImpresorasRemotas();
   }, []);
+
+  useEffect(() => {
+    if (!pairingInfo?.expiresAt) {
+      setPairingTimeLeftMs(null);
+      return;
+    }
+
+    const updateTimeLeft = () => {
+      const expiresAtMs = new Date(pairingInfo.expiresAt).getTime();
+      setPairingTimeLeftMs(Math.max(0, expiresAtMs - Date.now()));
+    };
+
+    updateTimeLeft();
+    const interval = window.setInterval(updateTimeLeft, 1000);
+    return () => window.clearInterval(interval);
+  }, [pairingInfo]);
+
+  const pairingExpired = pairingTimeLeftMs !== null && pairingTimeLeftMs <= 0;
+
+  const formatTimeLeft = (ms: number | null): string => {
+    if (ms === null) return '';
+    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const comandaPreviewText = useMemo(() => {
+    const previewFormulario: FormularioComanda = {
+      tipo_pedido: 'mesa',
+      mesas: [
+        { id: 'preview-mesa-1', numero: '12', capacidad: 4, salon: 'Principal', ocupada: true }
+      ],
+      items: [
+        {
+          id: 'preview-item-1',
+          producto: {
+            id: 'preview-prod-1',
+            nombre: 'Bandeja Especial',
+            precio: 28500,
+            categoria: 'almuerzo',
+            disponible: true
+          },
+          cantidad: 2,
+          precio_unitario: 28500,
+          subtotal: 57000,
+          personalizacion: {
+            adicion_proteina: 'pollo_extra',
+            termino: 'bien_asado'
+          },
+          observaciones: 'Una sin picante, por favor.'
+        },
+        {
+          id: 'preview-item-2',
+          producto: {
+            id: 'preview-prod-2',
+            nombre: 'Jugo de Mora',
+            precio: 7000,
+            categoria: 'bebida',
+            disponible: true
+          },
+          cantidad: 1,
+          precio_unitario: 7000,
+          subtotal: 7000
+        }
+      ],
+      observaciones_generales: 'Mesa con cliente alérgico a frutos secos.'
+    };
+
+    const rawReceipt = generateComandaReceipt(
+      previewFormulario,
+      'Mesero de Prueba',
+      (personalizacion: any) => {
+        const entries = Object.entries(personalizacion || {});
+        return entries as Array<[string, any]>;
+      },
+      (catId: string, itemId: string) => {
+        const catalogo: Record<string, Record<string, { item: string }>> = {
+          adicion_proteina: {
+            pollo_extra: { item: '+ Pollo extra (+$4.000)' }
+          },
+          termino: {
+            bien_asado: { item: '+ Término: bien asado (+$0)' }
+          }
+        };
+
+        return catalogo?.[catId]?.[itemId] || null;
+      },
+      false,
+      false,
+      paperWidth,
+      fontSize
+    );
+
+    return rawReceipt
+      .replace(/^\x1D\x21\x00/, '')
+      .replace(/^\x1D\x21\x11/, '')
+      .replace(/^\x1D\x21\x22/, '')
+      .replace(/[\x00-\x08\x0B-\x1F\x7F]/g, '')
+      .replace(/^!\s*\n/, '')
+      .trim();
+  }, [paperWidth, fontSize]);
+
+  const comandaPreviewPaperWidthPx = useMemo(() => {
+    return paperWidth === '58mm' ? 300 : 430;
+  }, [paperWidth]);
+
+  const comandaPreviewFontClass = useMemo(() => {
+    if (fontSize === 'large') return 'text-sm';
+    if (fontSize === 'small') return 'text-[11px]';
+    return 'text-xs';
+  }, [fontSize]);
 
   const cargarImpresorasRemotas = async () => {
     try {
@@ -182,7 +296,7 @@ ${separador}
           <div>
             <h2 className="text-2xl font-bold">Configuración de Impresión - Vista Previa de Facturación</h2>
             <p className="text-blue-100 text-sm">
-              En esta sección puedes configurar los datos que a parecerán en tus facturas y recibos, así como gestionar las impresoras conectadas a través de nuestro sistema de impresión remota.
+              En esta sección puedes configurar los datos que aparecerán en tus facturas y recibos, así como gestionar las impresoras conectadas a través de nuestro sistema de impresión remota.
             </p>
           </div>
         </div>
@@ -227,10 +341,18 @@ ${separador}
           </div>
 
           {pairingInfo && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-900">
+            <div className={`rounded-lg p-3 text-sm border ${pairingExpired ? 'bg-red-50 border-red-200 text-red-900' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
               <p className="font-semibold">Código de activación (válido 10 minutos):</p>
               <p className="mt-1 text-lg tracking-wide"><strong>{pairingInfo.activationCode}</strong></p>
               <p className="mt-1 text-xs">Expira: {new Date(pairingInfo.expiresAt).toLocaleString()}</p>
+              {!pairingExpired && (
+                <p className="mt-1 text-xs font-semibold">Tiempo restante: {formatTimeLeft(pairingTimeLeftMs)}</p>
+              )}
+              {pairingExpired && (
+                <div className="mt-2 bg-red-100 border border-red-200 rounded-md p-2 text-xs">
+                  Este código ya expiró. Genera un nuevo código para continuar la activación en el agente.
+                </div>
+              )}
               <p className="mt-2 text-xs text-amber-800">
                 El cliente solo debe abrir <strong>montis-printer-agent.exe</strong> e ingresar este código.
               </p>
@@ -379,7 +501,7 @@ ${separador}
       <div className="bg-white rounded-xl shadow-sm border border-secondary-200 p-8">
         <h3 className="text-lg font-bold text-secondary-900 mb-6 flex items-center gap-2">
             <FileText size={20} className="text-primary-600" />
-            Diseño de Encabezado (Recibo/Factura)
+        Diseño de Encabezado (Recibo/Factura) y Comanda de Cocina
         </h3>
 
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4 flex items-center gap-3 text-yellow-800">
@@ -435,6 +557,24 @@ ${separador}
                     ... detalle de la venta ...
         </div>
             </div>
+          </div>
+        </div>
+
+        <div className="mt-8 border-t border-secondary-200 pt-6">
+          <h4 className="text-base font-bold text-secondary-900 mb-3 flex items-center gap-2">
+            <Printer size={18} className="text-primary-600" />
+            Vista previa de Comanda para Cocina
+          </h4>
+          <p className="text-xs text-secondary-600 mb-3">
+            Esta vista usa el mismo formateador de comandas que recibe la impresora de cocina, respetando ancho de papel y tamaño de fuente seleccionados.
+          </p>
+          <div
+            className="mx-auto bg-white border-2 border-dashed border-secondary-300 rounded-lg p-4 shadow-inner"
+            style={{ width: `${comandaPreviewPaperWidthPx}px`, maxWidth: '100%' }}
+          >
+            <pre className={`text-black whitespace-pre-wrap overflow-x-auto font-mono leading-relaxed text-left ${comandaPreviewFontClass}`}>
+              {comandaPreviewText}
+            </pre>
           </div>
         </div>
       </div>
