@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -13,7 +14,7 @@ import tkinter as tk
 from dataclasses import dataclass
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 from typing import Any, Dict, Optional
 
 import requests
@@ -38,6 +39,7 @@ LOG_PATH = os.path.join(APP_DIR, "agent.log")
 DEFAULT_API_BASE = os.getenv("MONTIS_API_BASE", "https://montis-cloud-backend.onrender.com").rstrip("/")
 POLL_SECONDS = 3
 JOB_LIMIT = 5
+SINGLE_INSTANCE_PORT = 51321
 
 
 @dataclass
@@ -340,42 +342,106 @@ def register_startup(logger: logging.Logger) -> None:
         executable_path = sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__)
         if executable_path.lower().endswith(".py"):
             pythonw = os.path.join(sys.exec_prefix, "pythonw.exe")
-            value = f'"{pythonw}" "{executable_path}"'
+            value = f'"{pythonw}" "{executable_path}" --background'
         else:
-            value = f'"{executable_path}"'
+            value = f'"{executable_path}" --background'
         winreg.SetValueEx(key, "MontisPrinterAgent", 0, winreg.REG_SZ, value)
         winreg.CloseKey(key)
     except Exception as error:
         logger.warning(f"No se pudo registrar autoinicio: {error}")
 
 
-def pair_device(api_base: str, logger: logging.Logger) -> Optional[AgentState]:
+def pair_device(api_base: str, logger: logging.Logger, existing_state: Optional[AgentState] = None) -> Optional[AgentState]:
     api_base = normalize_api_base(api_base)
-    detected_printer = autodetect_printer() or "Impresora de Cocina"
+    installed_printers = get_installed_printers()
+    detected_printer = (
+        existing_state.printer_name
+        if existing_state and existing_state.printer_name
+        else (autodetect_printer() or "")
+    )
     machine_fp = fingerprint()
 
     root = tk.Tk()
     root.title("Montis - Activar impresora")
-    root.geometry("440x210")
+    root.geometry("480x340")
     root.resizable(False, False)
 
     tk.Label(root, text="Activación de impresora de cocina", font=("Segoe UI", 12, "bold")).pack(pady=(16, 6))
-    tk.Label(root, text="Ingresa el código de activación generado en el panel admin:", font=("Segoe UI", 10)).pack()
+    tk.Label(root, text="Ingresa el código de activación generado en Configuración de Impresión", font=("Segoe UI", 10)).pack(pady=(0, 4))
 
     code_var = tk.StringVar()
     entry = tk.Entry(root, textvariable=code_var, font=("Consolas", 13), justify="center")
-    entry.pack(fill="x", padx=20, pady=10)
+    entry.pack(fill="x", padx=20, pady=(0, 10))
     entry.focus_set()
 
-    status_var = tk.StringVar(value=f"Impresora detectada: {detected_printer}")
+    tk.Label(root, text="Selecciona la impresora a usar:", font=("Segoe UI", 10)).pack()
+    selected_printer_var = tk.StringVar(value=detected_printer)
+    printer_combo = ttk.Combobox(root, textvariable=selected_printer_var, state="readonly", font=("Segoe UI", 10))
+    printer_combo.pack(fill="x", padx=20, pady=(6, 4))
+
+    status_var = tk.StringVar(value="")
     tk.Label(root, textvariable=status_var, fg="#334155", font=("Segoe UI", 9)).pack(pady=(0, 8))
 
+    def refresh_printers() -> None:
+        nonlocal installed_printers
+        installed_printers = get_installed_printers()
+        if not installed_printers:
+            printer_combo["values"] = []
+            selected_printer_var.set("")
+            status_var.set("No se encontraron impresoras instaladas en Windows.")
+            return
+
+        printer_combo["values"] = installed_printers
+        current = selected_printer_var.get().strip()
+        if current and current in installed_printers:
+            selected_printer_var.set(current)
+        elif detected_printer and detected_printer in installed_printers:
+            selected_printer_var.set(detected_printer)
+        else:
+            selected_printer_var.set(installed_printers[0])
+        status_var.set(f"Impresoras encontradas: {len(installed_printers)}")
+
+    refresh_printers()
+
+    tk.Button(root, text="Actualizar lista", command=refresh_printers, padx=10, pady=4).pack(pady=(0, 10))
+
     result: dict[str, Any] = {"cancelled": True}
+
+    def selected_printer() -> str:
+        value = selected_printer_var.get().strip()
+        return value
+
+    def save_only() -> None:
+        if not existing_state:
+            messagebox.showwarning("Montis", "Debes activar primero con un código.")
+            return
+
+        chosen_printer = selected_printer()
+        if not chosen_printer:
+            messagebox.showwarning("Montis", "Selecciona una impresora antes de continuar.")
+            return
+
+        updated_state = AgentState(
+            api_base=normalize_api_base(existing_state.api_base),
+            printer_id=existing_state.printer_id,
+            api_key=existing_state.api_key,
+            fingerprint=existing_state.fingerprint,
+            printer_name=chosen_printer,
+        )
+        result["state"] = updated_state
+        result["cancelled"] = False
+        messagebox.showinfo("Montis", "Configuración guardada. La impresora local fue actualizada.")
+        root.destroy()
 
     def submit() -> None:
         token = code_var.get().strip()
         if not token:
             messagebox.showwarning("Montis", "Ingresa el código de activación.")
+            return
+
+        chosen_printer = selected_printer()
+        if not chosen_printer:
+            messagebox.showwarning("Montis", "Selecciona una impresora antes de activar.")
             return
 
         try:
@@ -386,7 +452,7 @@ def pair_device(api_base: str, logger: logging.Logger) -> Optional[AgentState]:
                     "hostname": hostname(),
                     "os": os_name(),
                     "fingerprint": machine_fp,
-                    "printerName": detected_printer,
+                    "printerName": chosen_printer,
                 },
                 timeout=20,
             )
@@ -410,7 +476,7 @@ def pair_device(api_base: str, logger: logging.Logger) -> Optional[AgentState]:
                 printer_id=payload["printerId"],
                 api_key=payload["apiKey"],
                 fingerprint=machine_fp,
-                printer_name=detected_printer,
+                printer_name=chosen_printer,
             )
             result["cancelled"] = False
             messagebox.showinfo("Montis", "Impresora activada correctamente. El agente seguirá en segundo plano.")
@@ -419,7 +485,13 @@ def pair_device(api_base: str, logger: logging.Logger) -> Optional[AgentState]:
             logger.warning(f"Error de activación: {error}")
             messagebox.showerror("Montis", f"No se pudo activar: {error}")
 
-    tk.Button(root, text="Activar", command=submit, bg="#2563eb", fg="white", padx=16, pady=8).pack()
+    button_frame = tk.Frame(root)
+    button_frame.pack(pady=(4, 8))
+
+    if existing_state:
+        tk.Button(button_frame, text="Guardar impresora", command=save_only, bg="#0f766e", fg="white", padx=14, pady=8).pack(side="left", padx=6)
+    tk.Button(button_frame, text="Activar", command=submit, bg="#2563eb", fg="white", padx=16, pady=8).pack(side="left", padx=6)
+
     tk.Label(root, text="Después de activar, no necesitas volver a configurar nada.", font=("Segoe UI", 9), fg="#475569").pack(pady=12)
     root.mainloop()
 
@@ -451,6 +523,21 @@ class Agent:
         uptime = int(now - self.start_time)
         url = f"{self.state.api_base}/api/print/printers/{self.state.printer_id}/heartbeat"
         self.session.post(url, json={"uptime": uptime, "status": "ready", "meta": {"printer_name": self.state.printer_name}}, timeout=10)
+
+    def reload_runtime_state(self) -> None:
+        disk_state = load_state()
+        if not disk_state:
+            return
+
+        if (
+            disk_state.printer_id == self.state.printer_id
+            and disk_state.api_key == self.state.api_key
+            and disk_state.fingerprint == self.state.fingerprint
+        ):
+            if disk_state.printer_name != self.state.printer_name:
+                self.logger.info(f"Impresora actualizada en configuración: {disk_state.printer_name}")
+            self.state.printer_name = disk_state.printer_name
+            self.state.api_base = normalize_api_base(disk_state.api_base)
 
     def fetch_jobs(self) -> list[Dict[str, Any]]:
         url = f"{self.state.api_base}/api/print/jobs"
@@ -499,6 +586,7 @@ class Agent:
         backoff = 0
         while True:
             try:
+                self.reload_runtime_state()
                 self.heartbeat()
                 jobs = self.fetch_jobs()
 
@@ -531,19 +619,71 @@ class Agent:
                 time.sleep(backoff)
 
 
+def acquire_single_instance_lock() -> Optional[socket.socket]:
+    lock_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        lock_socket.bind(("127.0.0.1", SINGLE_INSTANCE_PORT))
+        lock_socket.listen(1)
+        return lock_socket
+    except OSError:
+        try:
+            lock_socket.close()
+        except Exception:
+            pass
+        return None
+
+
+def start_background_agent(logger: logging.Logger) -> None:
+    executable_path = sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__)
+
+    try:
+        if executable_path.lower().endswith(".py"):
+            pythonw = os.path.join(sys.exec_prefix, "pythonw.exe")
+            if not os.path.exists(pythonw):
+                pythonw = sys.executable
+            args = [pythonw, executable_path, "--background"]
+        else:
+            args = [executable_path, "--background"]
+
+        creation_flags = 0
+        if hasattr(subprocess, "DETACHED_PROCESS"):
+            creation_flags |= subprocess.DETACHED_PROCESS  # type: ignore[attr-defined]
+        if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+            creation_flags |= subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+
+        subprocess.Popen(args, close_fds=True, creationflags=creation_flags)
+    except Exception as error:
+        logger.warning(f"No se pudo iniciar agente en segundo plano: {error}")
+
+
 def main() -> None:
     logger = setup_logger()
     logger.info("=== Montis Printer Agent ===")
 
+    background_mode = "--background" in sys.argv
+
     state = load_state()
-    if not state:
-        state = pair_device(DEFAULT_API_BASE, logger)
+
+    if not background_mode:
+        state = pair_device(DEFAULT_API_BASE if not state else state.api_base, logger, state)
         if not state:
             logger.info("Activación cancelada por el usuario.")
             return
         save_state(state)
+        register_startup(logger)
+        start_background_agent(logger)
+        return
+
+    if not state:
+        logger.info("No hay estado guardado para ejecutar en segundo plano.")
+        return
 
     register_startup(logger)
+
+    lock = acquire_single_instance_lock()
+    if not lock:
+        logger.info("Ya existe una instancia en segundo plano ejecutándose.")
+        return
 
     # Si la impresora guardada ya no existe, intentamos autodetectar una nueva
     installed = get_installed_printers()

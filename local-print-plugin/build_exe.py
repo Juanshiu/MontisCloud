@@ -1,5 +1,5 @@
 """
-Script para compilar el plugin a ejecutable .exe
+Script para compilar el agente de impresión remota a ejecutable .exe
 Genera un archivo standalone que no requiere Python instalado
 """
 
@@ -8,7 +8,7 @@ import os
 import sys
 
 def compilar(con_consola=False):
-    """Compila server.py a ejecutable .exe usando PyInstaller"""
+    """Compila printer_agent.py a ejecutable .exe usando PyInstaller"""
     
     print("=" * 60)
     print("Compilando Plugin de Impresión Montis Cloud...")
@@ -19,17 +19,15 @@ def compilar(con_consola=False):
     
     # Configuración de PyInstaller
     PyInstaller.__main__.run([
-        'server.py',                         # Archivo principal
-        '--name=CasaMontis-PrintPlugin',     # Nombre del ejecutable
+        'printer_agent.py',                  # Archivo principal
+        '--name=montis-printer-agent',       # Nombre del ejecutable
         '--onefile',                         # Un solo archivo .exe
         modo_ventana,                        # Modo de ventana
         '--icon=NONE',                       # Agregar ícono si existe
         '--clean',                           # Limpiar archivos temporales
         '--distpath=dist',                   # Carpeta de salida
         '--workpath=build',                  # Carpeta temporal
-        '--add-data=requirements.txt;.',     # Incluir archivos adicionales
-        '--hidden-import=flask',             # Asegurar imports
-        '--hidden-import=flask_cors',
+        '--hidden-import=requests',          # Asegurar imports
         '--noupx',                           # No comprimir con UPX (más compatible)
         '--noconfirm',                       # No pedir confirmación
     ])
@@ -37,13 +35,13 @@ def compilar(con_consola=False):
     print("\n" + "=" * 60)
     print("✅ Compilación completada")
     print("=" * 60)
-    print(f"Ejecutable generado en: dist\\CasaMontis-PrintPlugin.exe")
+    print(f"Ejecutable generado en: dist\\montis-printer-agent.exe")
     print(f"Modo: {'Con consola (debug)' if con_consola else 'Sin consola (producción)'}")
     print("=" * 60)
     print("\nPróximos pasos:")
     print("1. Probar el .exe localmente")
     print("2. Compartir con el cliente")
-    print("3. Asegurar que la impresora esté COMPARTIDA en Windows")
+    print("3. Activar con código y seleccionar impresora")
     print("=" * 60)
 
 
