@@ -253,9 +253,9 @@ export default function FormularioComandas() {
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-secondary-800 mb-2">
+          {/* <h1 className="text-3xl font-bold text-secondary-800 mb-2">
             Montis Cloud - Sistema de Comandas
-          </h1>
+          </h1> */}
           <p className="text-secondary-600">
             {modoEdicion ? 'Editando comanda existente' : 'Complete los pasos para crear una nueva comanda'}
           </p>

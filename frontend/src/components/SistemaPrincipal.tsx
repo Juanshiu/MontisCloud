@@ -234,7 +234,7 @@ export default function SistemaPrincipal() {
       <footer className="bg-white border-t mt-12">
         <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
           <div className="text-center text-sm text-secondary-500">
-            Montis Cloud - Sistema de Comandas v1.0 © 2026
+            Montis Cloud - Sistema de Comandas v2.0 © 2026
           </div>
         </div>
       </footer>

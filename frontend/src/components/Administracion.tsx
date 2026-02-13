@@ -201,7 +201,7 @@ export default function Administracion() {
         },
         {
           id: 'facturacion',
-          nombre: 'Facturas y Recibos',
+          nombre: 'Configuración de Impresión',
           icon: FileText,
           descripcion: 'Configuración de facturas y recibos',
           component: GestionFacturacion,

@@ -180,9 +180,9 @@ ${separador}
             <FileText className="h-6 w-6" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold">Vista Previa de Facturación</h2>
+            <h2 className="text-2xl font-bold">Configuración de Impresión - Vista Previa de Facturación</h2>
             <p className="text-blue-100 text-sm">
-              Visualización de cómo aparecerá la información en facturas y recibos
+              En esta sección puedes configurar los datos que a parecerán en tus facturas y recibos, así como gestionar las impresoras conectadas a través de nuestro sistema de impresión remota.
             </p>
           </div>
         </div>
@@ -368,8 +368,8 @@ ${separador}
 
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
             <p>
-              La impresión remota funciona cuando un PC (normalmente cocina) ejecuta el agente y mantiene heartbeat.
-              Las comandas se encolan desde el backend automáticamente.
+              La impresión remota funciona cuando un PC (normalmente el PC donde tiene conectado la impresora) ejecuta el agente y mantiene la conexión activa.
+              Las comandas se encolan desde el sistema automáticamente.
             </p>
           </div>
         </div>
