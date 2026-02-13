@@ -485,8 +485,7 @@ const GeneradorContratos: React.FC = () => {
       
       if (response.success) {
         setSuccess('Contrato generado y guardado correctamente');
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-        const baseUrl = apiUrl.replace('/api', '');
+        const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
         setContratoUrl(`${baseUrl}${response.url}`);
         
         if (selectedEmpleadoId) {
@@ -498,8 +497,7 @@ const GeneradorContratos: React.FC = () => {
       const errorData = err.response?.data;
       // Si el PDF se generó pero hubo error en historial, mostrar advertencia naranja
       if (errorData?.url) {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-        const baseUrl = apiUrl.replace('/api', '');
+        const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
         setContratoUrl(`${baseUrl}${errorData.url}`);
         setError(`${errorData.error || 'Error parcial'}. El PDF se generó pero puede haber un problema con el historial.`);
       } else {
@@ -511,8 +509,7 @@ const GeneradorContratos: React.FC = () => {
   };
 
   const handleReprint = (contrato: ContratoHistorico) => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-    const baseUrl = apiUrl.replace('/api', '');
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
     const url = `${baseUrl}/api/contratos/download/${contrato.file_name}`;
     window.open(url, '_blank');
   };

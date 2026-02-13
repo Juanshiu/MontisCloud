@@ -8,16 +8,12 @@ import {
   Proveedor, InsumoCategoria
 } from '@/types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-const FALLBACK_URL = 'http://localhost:3001/api';
+const API_BASE_URL = '/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000, // Aumentado temporalmente para debug
 });
-
-// Variable para rastrear si ya se intentó con el fallback
-let usingFallback = false;
 
 // Interceptor para agregar el token de autenticación a cada solicitud
 api.interceptors.request.use(
@@ -68,31 +64,6 @@ api.interceptors.response.use(
       }
 
       return Promise.reject(error);
-    }
-
-    // ===== MANEJO DE ERRORES DE RED / FALLBACK =====
-    // Si hay error de red/timeout y no se ha intentado con fallback
-    if (
-      (error.code === 'ECONNABORTED' || 
-       error.code === 'ERR_NETWORK' || 
-       error.code === 'ERR_CONNECTION_TIMED_OUT' ||
-       error.message?.includes('Network Error') ||
-       error.message?.includes('timeout')) &&
-      !usingFallback &&
-      !originalRequest._retry &&
-      API_BASE_URL !== FALLBACK_URL
-    ) {
-      console.warn(`⚠️ No se pudo conectar a ${API_BASE_URL}, intentando con ${FALLBACK_URL}...`);
-      
-      originalRequest._retry = true;
-      usingFallback = true;
-      
-      // Cambiar la baseURL para futuras peticiones
-      api.defaults.baseURL = FALLBACK_URL;
-      originalRequest.baseURL = FALLBACK_URL;
-      
-      // Reintentar la petición con localhost
-      return api(originalRequest);
     }
 
     return Promise.reject(error);

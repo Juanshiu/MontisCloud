@@ -11,7 +11,7 @@ import axios from 'axios';
 
 // Crear instancia de axios con configuración similar a api.ts
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
+  baseURL: '/api',
   timeout: 10000,
 });
 
