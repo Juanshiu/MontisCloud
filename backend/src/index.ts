@@ -47,18 +47,29 @@ app.use(helmet());
 app.use(compression());
 
 // Configuración de CORS
-const allowedOrigins = [
+const normalizeOrigin = (value: string) => value.replace(/\/+$/, '');
+
+const configuredOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean)
+  .map(normalizeOrigin);
+
+const defaultOrigins = [
   'http://localhost:3000',
   'http://localhost:3002',
+].map(normalizeOrigin);
+
+const allowedOriginStrings = Array.from(
+  new Set([...defaultOrigins, ...configuredOrigins])
+);
+
+const allowedOriginPatterns = [
   // IPs locales (desarrollo en red local)
   /^http:\/\/(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3})(:\d+)?$/,
-  // Dominios de producción en Render
-  'https://montis-cloud-frontend.onrender.com',
-  'https://montis-cloud-admin.onrender.com',
-  'https://montiscloud.onrender.com', // Frontend sistema de comandas
 ];
 
-const normalizeOrigin = (value: string) => value.replace(/\/+$/, '');
+console.log(`🌐 CORS allowed origins: ${allowedOriginStrings.join(', ')}`);
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -68,14 +79,9 @@ app.use(cors({
     // Verificar si está en la lista de orígenes permitidos
     const normalizedOrigin = normalizeOrigin(origin);
 
-    const isAllowed = allowedOrigins.some(allowedOrigin => {
-      if (typeof allowedOrigin === 'string') {
-        return normalizedOrigin === normalizeOrigin(allowedOrigin);
-      } else if (allowedOrigin instanceof RegExp) {
-        return allowedOrigin.test(normalizedOrigin);
-      }
-      return false;
-    });
+    const isAllowedByString = allowedOriginStrings.includes(normalizedOrigin);
+    const isAllowedByPattern = allowedOriginPatterns.some((pattern) => pattern.test(normalizedOrigin));
+    const isAllowed = isAllowedByString || isAllowedByPattern;
     
     if (isAllowed) {
       callback(null, true);
