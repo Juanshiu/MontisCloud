@@ -522,6 +522,18 @@ router.post('/import', async (req: Request, res: Response) => {
       // Mapa de codigo de categoría → id (se va construyendo)
       const catCodigoMap = new Map<string, string>();
       const catNombreMap = new Map<string, string>();
+      const catById = new Map<string, { codigo: string; nombre: string }>();
+
+      const reindexarCategoria = (id: string, codigo: string, nombre: string) => {
+        const anterior = catById.get(id);
+        if (anterior) {
+          catCodigoMap.delete(anterior.codigo);
+          catNombreMap.delete(normalizarClave(anterior.nombre));
+        }
+        catCodigoMap.set(codigo, id);
+        catNombreMap.set(normalizarClave(nombre), id);
+        catById.set(id, { codigo, nombre });
+      };
 
       // Cargar existentes
       const existentes = await trx.selectFrom('categorias_personalizacion')
@@ -529,8 +541,20 @@ router.post('/import', async (req: Request, res: Response) => {
         .where('empresa_id', '=', empresaId)
         .execute();
       for (const c of existentes) {
-        catCodigoMap.set(c.codigo, c.id);
-        catNombreMap.set(normalizarClave(c.nombre), c.id);
+        reindexarCategoria(c.id, c.codigo, c.nombre);
+      }
+
+      const codigosArchivo = new Set<string>();
+      const codigosDuplicadosArchivo = new Set<string>();
+      for (let idx = 0; idx < categoriasRows.length; idx++) {
+        const codigo = normalizarTexto(categoriasRows[idx]?.codigo);
+        if (!codigo) continue;
+        if (codigosArchivo.has(codigo)) {
+          codigosDuplicadosArchivo.add(codigo);
+          errores.push({ fila: idx + 2, hoja: 'Categorias', mensaje: `Código duplicado en archivo: ${codigo}` });
+          continue;
+        }
+        codigosArchivo.add(codigo);
       }
 
       for (let idx = 0; idx < categoriasRows.length; idx++) {
@@ -544,6 +568,10 @@ router.post('/import', async (req: Request, res: Response) => {
         }
 
         const codigoRaw = normalizarTexto(catRow.codigo);
+        if (codigoRaw && codigosDuplicadosArchivo.has(codigoRaw)) {
+          continue;
+        }
+
         let categoryId: string | undefined;
 
         // Buscar existente por codigo o nombre
@@ -555,8 +583,22 @@ router.post('/import', async (req: Request, res: Response) => {
         }
 
         if (categoryId) {
+          const categoriaActual = catById.get(categoryId);
+          const codigoFinal = codigoRaw || categoriaActual?.codigo;
+          if (!codigoFinal) {
+            errores.push({ fila, hoja: 'Categorias', mensaje: 'No se pudo resolver el código de la categoría' });
+            continue;
+          }
+
+          const idConCodigoFinal = catCodigoMap.get(codigoFinal);
+          if (idConCodigoFinal && idConCodigoFinal !== categoryId) {
+            errores.push({ fila, hoja: 'Categorias', mensaje: `El código ${codigoFinal} ya pertenece a otra categoría` });
+            continue;
+          }
+
           await trx.updateTable('categorias_personalizacion')
             .set({
+              codigo: codigoFinal,
               nombre: nombreCategoria,
               descripcion: normalizarTexto(catRow.descripcion),
               orden: catRow.orden || 0,
@@ -567,10 +609,7 @@ router.post('/import', async (req: Request, res: Response) => {
             .where('id', '=', categoryId)
             .execute();
 
-          if (codigoRaw) {
-            catCodigoMap.set(codigoRaw, categoryId);
-          }
-          catNombreMap.set(normalizarClave(nombreCategoria), categoryId);
+          reindexarCategoria(categoryId, codigoFinal, nombreCategoria);
           catActualizadas++;
         } else {
           const nuevoCodigo = codigoRaw || await generarSiguienteCodigoLocal('categorias_personalizacion', 'CPER', trx);
@@ -588,8 +627,7 @@ router.post('/import', async (req: Request, res: Response) => {
             .returning(['id', 'codigo'])
             .executeTakeFirstOrThrow();
           categoryId = newCat.id;
-          catCodigoMap.set(newCat.codigo, newCat.id);
-          catNombreMap.set(normalizarClave(nombreCategoria), newCat.id);
+          reindexarCategoria(newCat.id, newCat.codigo, nombreCategoria);
           catCreadas++;
         }
       }
