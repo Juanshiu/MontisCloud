@@ -55,7 +55,7 @@ const allowedOrigins = [
   // Dominios de producción en Render
   'https://montis-cloud-frontend.onrender.com',
   'https://montis-cloud-admin.onrender.com',
-  'https://sistema-de-comandas-casa-montis.onrender.com', // Frontend sistema de comandas
+  'https://montiscloud.onrender.com/', // Frontend sistema de comandas
 ];
 
 app.use(cors({
