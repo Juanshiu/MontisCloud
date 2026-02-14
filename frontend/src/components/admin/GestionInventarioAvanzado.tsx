@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, Fragment } from 'react';
 import { Save, Plus, Trash2, Download, UploadCloud, RefreshCw, Eye, EyeOff, CreditCard, MapPin, X, AlertCircle, Search, Filter, Tag, Coffee } from 'lucide-react';
 import { apiService } from '@/services/api';
-import { AjustePersonalizacionInsumo, Insumo, Producto, RecetaProductoInsumo, CategoriaPersonalizacion, ItemPersonalizacion, InsumoHistorial, ConfiguracionSistema, Proveedor, InsumoCategoria } from '@/types';
+import { AjustePersonalizacionInsumo, Insumo, Producto, RecetaProductoInsumo, RecetaProductoResumen, CategoriaPersonalizacion, ItemPersonalizacion, InsumoHistorial, ConfiguracionSistema, Proveedor, InsumoCategoria } from '@/types';
 
 const unidades = ['g', 'kg', 'ml', 'unidad'];
 
@@ -97,6 +97,8 @@ export default function GestionInventarioAvanzado() {
   const [productoSeleccionadoId, setProductoSeleccionadoId] = useState<string | null>(null);
   const [recetaItems, setRecetaItems] = useState<RecetaProductoInsumo[]>([]);
   const [recetaError, setRecetaError] = useState<string | null>(null);
+  const [resumenRecetas, setResumenRecetas] = useState<RecetaProductoResumen[]>([]);
+  const [resumenRecetasError, setResumenRecetasError] = useState<string | null>(null);
 
   const [categoriasPersonalizacion, setCategoriasPersonalizacion] = useState<CategoriaPersonalizacion[]>([]);
   const [categoriaPersonalizacionId, setCategoriaPersonalizacionId] = useState<string | null>(null);
@@ -147,6 +149,7 @@ export default function GestionInventarioAvanzado() {
   useEffect(() => {
     cargarInsumos();
     cargarProductos();
+    cargarResumenRecetas();
     cargarCategoriasPersonalizacion();
     cargarConfiguracion();
     cargarProveedores();
@@ -321,6 +324,17 @@ export default function GestionInventarioAvanzado() {
       setProductos(data);
     } catch (error) {
       console.error('Error al cargar productos:', error);
+    }
+  };
+
+  const cargarResumenRecetas = async () => {
+    try {
+      const data = await apiService.getResumenRecetasProductos();
+      setResumenRecetas(data || []);
+      setResumenRecetasError(null);
+    } catch (error) {
+      console.error('Error al cargar resumen de recetas:', error);
+      setResumenRecetasError('No se pudo cargar el resumen de recetas');
     }
   };
 
@@ -500,6 +514,7 @@ export default function GestionInventarioAvanzado() {
       setRecetaError(null);
       await apiService.updateRecetaProducto(productoSeleccionadoId, validas);
       await cargarRecetaProducto(productoSeleccionadoId);
+      await cargarResumenRecetas();
       mostrarExito('Receta guardada correctamente');
     } catch (error: any) {
       setRecetaError(error?.response?.data?.error || 'Error al guardar receta');
@@ -930,7 +945,8 @@ export default function GestionInventarioAvanzado() {
       )}
 
       {tab === 'recetas' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Recetas por producto */}
           <div className="bg-white rounded-xl shadow-sm border border-secondary-200 flex flex-col">
             <div className="p-6 border-b border-secondary-100 bg-blue-50/50 rounded-t-xl">
@@ -1233,6 +1249,58 @@ export default function GestionInventarioAvanzado() {
                 </button>
               </div>
             )}
+          </div>
+
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-secondary-200 overflow-hidden">
+            <div className="p-6 border-b border-secondary-100 bg-secondary-50/60">
+              <h3 className="text-lg font-semibold text-secondary-900">Productos que contienen recetas</h3>
+              <p className="text-sm text-secondary-600 mt-1">Resumen visual de productos con receta configurada.</p>
+            </div>
+
+            {resumenRecetasError && (
+              <div className="p-4 border-b border-red-100 bg-red-50 text-sm text-red-700">
+                {resumenRecetasError}
+              </div>
+            )}
+
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-secondary-200">
+                <thead className="bg-secondary-100/60">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-secondary-600 uppercase">Producto</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-secondary-600 uppercase">Código</th>
+                    <th className="px-4 py-3 text-right text-xs font-bold text-secondary-600 uppercase">Insumos</th>
+                    <th className="px-4 py-3 text-right text-xs font-bold text-secondary-600 uppercase">Costo receta</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-secondary-600 uppercase">Detalle de insumos</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-secondary-100">
+                  {resumenRecetas.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-10 text-center text-secondary-400 text-sm italic">
+                        No hay productos con recetas configuradas.
+                      </td>
+                    </tr>
+                  ) : (
+                    resumenRecetas.map((resumen) => (
+                      <tr key={resumen.producto_id} className="hover:bg-secondary-50/70 transition-colors">
+                        <td className="px-4 py-3 text-sm font-medium text-secondary-900">{resumen.producto_nombre}</td>
+                        <td className="px-4 py-3 text-sm text-secondary-600 font-mono">{resumen.producto_codigo || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-secondary-700 text-right font-mono">{resumen.cantidad_insumos}</td>
+                        <td className="px-4 py-3 text-sm text-secondary-700 text-right font-mono">
+                          ${Number(resumen.costo_total_receta || 0).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-secondary-600">
+                          {resumen.insumos.length > 0 ? resumen.insumos.join(', ') : '—'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

@@ -332,7 +332,7 @@ export default function GestionPersonalizaciones() {
   };
 
   const eliminarCategoria = async (id: string) => {
-    if (!confirm('¿Está seguro de que desea eliminar esta categoría? Las personalizaciones asociadas no se eliminarán, pero la categoría ya no estará disponible.')) {
+    if (!confirm('¿Está seguro de que desea eliminar esta categoría? También se eliminarán los ítems de personalización asociados a esta categoría.')) {
       return;
     }
 

@@ -4,7 +4,7 @@ import {
   ComandaHistorial, PaginatedResponse, Empleado, ConfiguracionNomina, 
   NominaDetalle, Liquidacion, ConfiguracionFacturacion, PagoNomina, 
   HistorialNomina, ContratoDetails, GenerarContratoResponse, ContratoHistorico, PlantillaDefaultResponse, PlantillaContrato,
-  Insumo, RecetaProductoInsumo, AjustePersonalizacionInsumo, ConfiguracionSistema, InsumoHistorial,
+  Insumo, RecetaProductoInsumo, RecetaProductoResumen, AjustePersonalizacionInsumo, ConfiguracionSistema, InsumoHistorial,
   Proveedor, InsumoCategoria
 } from '@/types';
 
@@ -285,6 +285,11 @@ export const apiService = {
   // Inventario Avanzado - Recetas
   async getRecetaProducto(productoId: string): Promise<RecetaProductoInsumo[]> {
     const response = await api.get(`/inventario-avanzado/recetas/productos/${productoId}`);
+    return response.data;
+  },
+
+  async getResumenRecetasProductos(): Promise<RecetaProductoResumen[]> {
+    const response = await api.get('/inventario-avanzado/recetas/productos/resumen');
     return response.data;
   },
 

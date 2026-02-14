@@ -418,12 +418,9 @@ router.get('/export', async (req: Request, res: Response) => {
       .select([
         'ip.codigo',
         'cp.codigo as categoria_codigo',
-        'cp.nombre as categoria_nombre',
         'ip.nombre',
         'ip.descripcion',
-        'ip.precio_extra',
         'ip.precio_adicional',
-        'ip.activo',
         'ip.disponible',
         'ip.usa_inventario',
         'ip.usa_insumos',
@@ -483,6 +480,22 @@ router.post('/import', async (req: Request, res: Response) => {
     let itemsCreados = 0;
     let itemsActualizados = 0;
 
+    const normalizarTexto = (valor: any): string => String(valor ?? '').trim();
+    const normalizarClave = (valor: any): string => normalizarTexto(valor).toLowerCase();
+    const parseBooleano = (valor: any, valorPorDefecto: boolean): boolean => {
+      if (valor === undefined || valor === null || valor === '') return valorPorDefecto;
+      if (typeof valor === 'boolean') return valor;
+      const normalizado = String(valor).trim().toLowerCase();
+      if (['true', '1', 'si', 'sí', 'yes', 'x'].includes(normalizado)) return true;
+      if (['false', '0', 'no'].includes(normalizado)) return false;
+      return valorPorDefecto;
+    };
+    const parseNumeroONull = (valor: any): number | null => {
+      if (valor === undefined || valor === null || valor === '') return null;
+      const numero = Number(valor);
+      return Number.isNaN(numero) ? null : numero;
+    };
+
     // Helper para generar siguiente código de categoría o item
     const generarSiguienteCodigoLocal = async (
       tabla: 'categorias_personalizacion' | 'items_personalizacion',
@@ -517,19 +530,20 @@ router.post('/import', async (req: Request, res: Response) => {
         .execute();
       for (const c of existentes) {
         catCodigoMap.set(c.codigo, c.id);
-        catNombreMap.set(c.nombre.toLowerCase(), c.id);
+        catNombreMap.set(normalizarClave(c.nombre), c.id);
       }
 
       for (let idx = 0; idx < categoriasRows.length; idx++) {
         const catRow = categoriasRows[idx];
         const fila = idx + 2;
 
-        if (!catRow.nombre) {
+        const nombreCategoria = normalizarTexto(catRow.nombre);
+        if (!nombreCategoria) {
           errores.push({ fila, hoja: 'Categorias', mensaje: 'Nombre es obligatorio' });
           continue;
         }
 
-        const codigoRaw = catRow.codigo?.toString().trim() || '';
+        const codigoRaw = normalizarTexto(catRow.codigo);
         let categoryId: string | undefined;
 
         // Buscar existente por codigo o nombre
@@ -537,21 +551,26 @@ router.post('/import', async (req: Request, res: Response) => {
           categoryId = catCodigoMap.get(codigoRaw);
         }
         if (!categoryId) {
-          categoryId = catNombreMap.get(catRow.nombre.toLowerCase());
+          categoryId = catNombreMap.get(normalizarClave(nombreCategoria));
         }
 
         if (categoryId) {
           await trx.updateTable('categorias_personalizacion')
             .set({
-              nombre: catRow.nombre,
-              descripcion: catRow.descripcion || '',
+              nombre: nombreCategoria,
+              descripcion: normalizarTexto(catRow.descripcion),
               orden: catRow.orden || 0,
-              activo: catRow.activo === false ? false : true,
-              multi_seleccion: !!catRow.multi_seleccion,
-              obligatorio: !!catRow.obligatorio
+              activo: parseBooleano(catRow.activo, true),
+              multi_seleccion: parseBooleano(catRow.multi_seleccion, false),
+              obligatorio: parseBooleano(catRow.obligatorio, false)
             })
             .where('id', '=', categoryId)
             .execute();
+
+          if (codigoRaw) {
+            catCodigoMap.set(codigoRaw, categoryId);
+          }
+          catNombreMap.set(normalizarClave(nombreCategoria), categoryId);
           catActualizadas++;
         } else {
           const nuevoCodigo = codigoRaw || await generarSiguienteCodigoLocal('categorias_personalizacion', 'CPER', trx);
@@ -559,91 +578,104 @@ router.post('/import', async (req: Request, res: Response) => {
             .values({
               empresa_id: empresaId,
               codigo: nuevoCodigo,
-              nombre: catRow.nombre,
-              descripcion: catRow.descripcion || '',
+              nombre: nombreCategoria,
+              descripcion: normalizarTexto(catRow.descripcion),
               orden: catRow.orden || 0,
-              activo: catRow.activo === false ? false : true,
-              multi_seleccion: !!catRow.multi_seleccion,
-              obligatorio: !!catRow.obligatorio
+              activo: parseBooleano(catRow.activo, true),
+              multi_seleccion: parseBooleano(catRow.multi_seleccion, false),
+              obligatorio: parseBooleano(catRow.obligatorio, false)
             })
             .returning(['id', 'codigo'])
             .executeTakeFirstOrThrow();
           categoryId = newCat.id;
           catCodigoMap.set(newCat.codigo, newCat.id);
-          catNombreMap.set(catRow.nombre.toLowerCase(), newCat.id);
+          catNombreMap.set(normalizarClave(nombreCategoria), newCat.id);
           catCreadas++;
         }
+      }
 
-        // Items para esta categoría: resolver por categoria_codigo o categoria_nombre
-        const itemsDeEstaCat = itemsRows.filter(i => 
-          (i.categoria_codigo && i.categoria_codigo === (codigoRaw || catRow.codigo)) ||
-          (i.categoria_nombre && i.categoria_nombre.toLowerCase() === catRow.nombre.toLowerCase()) ||
-          (i.categoria_id === catRow.id)
-        );
+      for (let idx = 0; idx < itemsRows.length; idx++) {
+        const itemRow = itemsRows[idx];
+        const fila = idx + 2;
 
-        for (const itemRow of itemsDeEstaCat) {
-          if (!itemRow.nombre) continue;
+        const nombreItem = normalizarTexto(itemRow.nombre);
+        if (!nombreItem) {
+          errores.push({ fila, hoja: 'Items', mensaje: 'Nombre es obligatorio' });
+          continue;
+        }
 
-          const itemCodigoRaw = itemRow.codigo?.toString().trim() || '';
+        const categoriaCodigo = normalizarTexto(itemRow.categoria_codigo);
+        const categoriaNombre = normalizarTexto(itemRow.categoria_nombre);
 
-          // Buscar item existente por codigo o (categoria + nombre)
-          let existingItem: any = null;
-          if (itemCodigoRaw) {
-            existingItem = await trx.selectFrom('items_personalizacion')
-              .select('id')
-              .where('empresa_id', '=', empresaId)
-              .where('codigo', '=', itemCodigoRaw)
-              .executeTakeFirst();
-          }
-          if (!existingItem) {
-            existingItem = await trx.selectFrom('items_personalizacion')
-              .select('id')
-              .where('empresa_id', '=', empresaId)
-              .where('categoria_id', '=', categoryId!)
-              .where('nombre', '=', itemRow.nombre)
-              .executeTakeFirst();
-          }
+        let categoryId: string | undefined;
+        if (categoriaCodigo) {
+          categoryId = catCodigoMap.get(categoriaCodigo);
+        }
+        if (!categoryId && categoriaNombre) {
+          categoryId = catNombreMap.get(normalizarClave(categoriaNombre));
+        }
 
-          if (existingItem) {
-            await trx.updateTable('items_personalizacion')
-              .set({
-                nombre: itemRow.nombre,
-                categoria_id: categoryId!,
-                descripcion: itemRow.descripcion || '',
-                precio_adicional: Number(itemRow.precio_adicional) || 0,
-                activo: itemRow.activo === false ? false : true,
-                disponible: itemRow.disponible === false ? false : true,
-                usa_inventario: !!itemRow.usa_inventario,
-                usa_insumos: !!itemRow.usa_insumos,
-                cantidad_inicial: Number(itemRow.cantidad_inicial) || null,
-                cantidad_actual: Number(itemRow.cantidad_actual) || null,
-                cantidad_minima: Number(itemRow.cantidad_minima) || null,
-                updated_at: new Date() as any
-              })
-              .where('id', '=', existingItem.id)
-              .execute();
-            itemsActualizados++;
-          } else {
-            const nuevoItemCodigo = itemCodigoRaw || await generarSiguienteCodigoLocal('items_personalizacion', 'PER', trx);
-            await trx.insertInto('items_personalizacion')
-              .values({
-                empresa_id: empresaId,
-                codigo: nuevoItemCodigo,
-                categoria_id: categoryId!,
-                nombre: itemRow.nombre,
-                descripcion: itemRow.descripcion || '',
-                precio_adicional: Number(itemRow.precio_adicional) || 0,
-                activo: itemRow.activo === false ? false : true,
-                disponible: itemRow.disponible === false ? false : true,
-                usa_inventario: !!itemRow.usa_inventario,
-                usa_insumos: !!itemRow.usa_insumos,
-                cantidad_inicial: Number(itemRow.cantidad_inicial) || 0,
-                cantidad_actual: Number(itemRow.cantidad_actual) || 0,
-                cantidad_minima: Number(itemRow.cantidad_minima) || null
-              })
-              .execute();
-            itemsCreados++;
-          }
+        if (!categoryId) {
+          errores.push({
+            fila,
+            hoja: 'Items',
+            mensaje: 'No se encontró la categoría asociada. Usa categoria_codigo válido.'
+          });
+          continue;
+        }
+
+        const itemCodigoRaw = normalizarTexto(itemRow.codigo);
+
+        let existingItem: any = null;
+        if (itemCodigoRaw) {
+          existingItem = await trx.selectFrom('items_personalizacion')
+            .select('id')
+            .where('empresa_id', '=', empresaId)
+            .where('codigo', '=', itemCodigoRaw)
+            .executeTakeFirst();
+        }
+        if (!existingItem) {
+          existingItem = await trx.selectFrom('items_personalizacion')
+            .select('id')
+            .where('empresa_id', '=', empresaId)
+            .where('categoria_id', '=', categoryId)
+            .where('nombre', '=', nombreItem)
+            .executeTakeFirst();
+        }
+
+        const payload = {
+          nombre: nombreItem,
+          categoria_id: categoryId,
+          descripcion: normalizarTexto(itemRow.descripcion),
+          precio_adicional: parseNumeroONull(itemRow.precio_adicional) ?? 0,
+          disponible: parseBooleano(itemRow.disponible, true),
+          usa_inventario: parseBooleano(itemRow.usa_inventario, false),
+          usa_insumos: parseBooleano(itemRow.usa_insumos, false),
+          cantidad_inicial: parseNumeroONull(itemRow.cantidad_inicial),
+          cantidad_actual: parseNumeroONull(itemRow.cantidad_actual),
+          cantidad_minima: parseNumeroONull(itemRow.cantidad_minima)
+        };
+
+        if (existingItem) {
+          await trx.updateTable('items_personalizacion')
+            .set({
+              ...payload,
+              updated_at: new Date() as any
+            })
+            .where('id', '=', existingItem.id)
+            .execute();
+          itemsActualizados++;
+        } else {
+          const nuevoItemCodigo = itemCodigoRaw || await generarSiguienteCodigoLocal('items_personalizacion', 'PER', trx);
+          await trx.insertInto('items_personalizacion')
+            .values({
+              empresa_id: empresaId,
+              codigo: nuevoItemCodigo,
+              activo: true,
+              ...payload
+            })
+            .execute();
+          itemsCreados++;
         }
       }
     });

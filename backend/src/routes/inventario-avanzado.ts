@@ -31,6 +31,52 @@ const normalizarNumero = (valor: any) => {
   return Number.isNaN(num) ? null : num;
 };
 
+const parsePersonalizacionesHabilitadas = (valor: any): string[] => {
+  if (valor === null || valor === undefined || valor === '') return [];
+
+  const normalizarArray = (arr: any[]): string[] => {
+    const limpias = arr
+      .map((v) => String(v ?? '').trim())
+      .filter(Boolean);
+    return Array.from(new Set(limpias));
+  };
+
+  if (Array.isArray(valor)) {
+    return normalizarArray(valor);
+  }
+
+  let texto = String(valor).trim();
+  if (!texto) return [];
+
+  for (let i = 0; i < 3; i++) {
+    try {
+      const parsed = JSON.parse(texto);
+      if (Array.isArray(parsed)) {
+        return normalizarArray(parsed);
+      }
+      if (typeof parsed === 'string') {
+        texto = parsed.trim();
+        continue;
+      }
+      break;
+    } catch {
+      break;
+    }
+  }
+
+  const textoLimpio = texto
+    .replace(/^[\[]|[\]]$/g, '')
+    .replace(/\\+"/g, '"')
+    .replace(/\\+/g, '');
+
+  return normalizarArray(textoLimpio.split(/[,;|]/));
+};
+
+const formatearPersonalizacionesParaExcel = (valor: any): string => {
+  const lista = parsePersonalizacionesHabilitadas(valor);
+  return lista.join(', ');
+};
+
 const registrarHistorialInsumo = async (data: {
   empresa_id: string;
   insumo_id: string;
@@ -456,6 +502,72 @@ router.get('/riesgo/personalizaciones', async (req: Request, res: Response) => {
 });
 
 // ===================== RECETAS PRODUCTOS =====================
+
+router.get('/recetas/productos/resumen', async (req: Request, res: Response) => {
+  try {
+    const { empresaId } = req.context;
+
+    const rows = await db.selectFrom('producto_insumos as pi')
+      .innerJoin('productos as p', 'pi.producto_id', 'p.id')
+      .innerJoin('insumos as i', 'pi.insumo_id', 'i.id')
+      .select([
+        'p.id as producto_id',
+        'p.codigo as producto_codigo',
+        'p.nombre as producto_nombre',
+        'pi.insumo_id',
+        'pi.cantidad as cantidad_usada',
+        'i.nombre as insumo_nombre',
+        'i.costo_unitario'
+      ])
+      .where('pi.empresa_id', '=', empresaId)
+      .where('p.empresa_id', '=', empresaId)
+      .orderBy('p.nombre', 'asc')
+      .orderBy('i.nombre', 'asc')
+      .execute();
+
+    const resumenMap = new Map<string, {
+      producto_id: string;
+      producto_codigo: string | null;
+      producto_nombre: string;
+      cantidad_insumos: number;
+      costo_total_receta: number;
+      insumos: string[];
+      insumosSet: Set<string>;
+    }>();
+
+    for (const row of rows) {
+      const actual = resumenMap.get(row.producto_id) || {
+        producto_id: row.producto_id,
+        producto_codigo: row.producto_codigo,
+        producto_nombre: row.producto_nombre,
+        cantidad_insumos: 0,
+        costo_total_receta: 0,
+        insumos: [],
+        insumosSet: new Set<string>()
+      };
+
+      const costoFila = Number(row.costo_unitario || 0) * Number(row.cantidad_usada || 0);
+      actual.costo_total_receta += costoFila;
+
+      if (!actual.insumosSet.has(row.insumo_id)) {
+        actual.insumosSet.add(row.insumo_id);
+        actual.insumos.push(row.insumo_nombre);
+        actual.cantidad_insumos += 1;
+      }
+
+      resumenMap.set(row.producto_id, actual);
+    }
+
+    const resumen = Array.from(resumenMap.values())
+      .map(({ insumosSet, ...item }) => ({ ...item }))
+      .sort((a, b) => a.producto_nombre.localeCompare(b.producto_nombre));
+
+    res.json(resumen);
+  } catch (error) {
+    console.error('Error al obtener resumen de recetas:', error);
+    res.status(500).json({ error: 'Error al obtener resumen de recetas' });
+  }
+});
 
 router.get('/recetas/productos/:productoId', async (req: Request, res: Response) => {
   try {
@@ -951,7 +1063,12 @@ router.get('/productos/export', async (req: Request, res: Response) => {
       .orderBy('p.codigo', 'asc')
       .execute();
 
-    const worksheet = XLSX.utils.json_to_sheet(productos);
+    const productosFormateados = productos.map((producto) => ({
+      ...producto,
+      personalizaciones_habilitadas: formatearPersonalizacionesParaExcel(producto.personalizaciones_habilitadas)
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(productosFormateados);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Productos');
 
@@ -1019,6 +1136,8 @@ router.post('/productos/import', async (req: Request, res: Response) => {
           }
         }
 
+        const personalizaciones = parsePersonalizacionesHabilitadas(row.personalizaciones_habilitadas);
+
         const data: any = {
           nombre: String(row.nombre).trim(),
           descripcion: row.descripcion || null,
@@ -1026,7 +1145,7 @@ router.post('/productos/import', async (req: Request, res: Response) => {
           categoria_id: catId,
           disponible: row.disponible === true || row.disponible === 1 || row.disponible === 'true' || row.disponible === 'VERDADERO',
           tiene_personalizacion: row.tiene_personalizacion === true || row.tiene_personalizacion === 1 || row.tiene_personalizacion === 'true' || row.tiene_personalizacion === 'VERDADERO',
-          personalizaciones_habilitadas: row.personalizaciones_habilitadas ? String(row.personalizaciones_habilitadas) : null,
+          personalizaciones_habilitadas: personalizaciones.length > 0 ? JSON.stringify(personalizaciones) : null,
           usa_inventario: row.usa_inventario === true || row.usa_inventario === 1 || row.usa_inventario === 'true' || row.usa_inventario === 'VERDADERO',
           usa_insumos: row.usa_insumos === true || row.usa_insumos === 1 || row.usa_insumos === 'true' || row.usa_insumos === 'VERDADERO',
           cantidad_inicial: normalizarNumero(row.cantidad_inicial),

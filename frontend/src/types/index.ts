@@ -67,6 +67,15 @@ export interface RecetaProductoInsumo {
   unidad_medida?: string;
 }
 
+export interface RecetaProductoResumen {
+  producto_id: string;
+  producto_codigo?: string | null;
+  producto_nombre: string;
+  cantidad_insumos: number;
+  costo_total_receta: number;
+  insumos: string[];
+}
+
 export interface AjustePersonalizacionInsumo {
   item_personalizacion_id: string;
   insumo_id: string;
