@@ -33,19 +33,34 @@ router.post('/login', async (req: Request, res: Response) => {
     return res.json(resultado);
 
   } catch (error: any) {
-    console.error('Login error:', error.message);
+    const errorMessage = typeof error?.message === 'string'
+      ? error.message
+      : (typeof error === 'string' ? error : 'Error interno del servidor');
+
+    console.error('Login error:', errorMessage, error);
     
     // Determinar status code apropiado
-    let status = 400;
-    if (error.message.includes('inválid') || error.message.includes('no encontrad')) {
+    let status = 500;
+    const msgNormalized = errorMessage.toLowerCase();
+
+    if (
+      msgNormalized.includes('inválid') ||
+      msgNormalized.includes('inválid') ||
+      msgNormalized.includes('no encontrad') ||
+      msgNormalized.includes('credenciales') ||
+      msgNormalized.includes('usuario desactivado') ||
+      msgNormalized.includes('empresa no encontrada')
+    ) {
       status = 401;
     } else if (error.codigo) {
       // Errores de licencia son 403 (Forbidden)
       status = 403;
+    } else if (msgNormalized.includes('requiere') || msgNormalized.includes('requerid')) {
+      status = 400;
     }
     
     return res.status(status).json({ 
-      error: error.message,
+      error: errorMessage,
       codigo: error.codigo || null
     });
   }
