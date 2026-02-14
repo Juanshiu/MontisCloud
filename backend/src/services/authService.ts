@@ -268,12 +268,21 @@ export class AuthService {
 
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 
-    // 8. Actualizar ultimo_login del usuario
-    await db
-      .updateTable('usuarios')
-      .set({ ultimo_login: new Date().toISOString() } as any)
-      .where('id', '=', empleado.id)
-      .execute();
+    // 8. Actualizar ultimo_login del usuario (tolerante a esquemas antiguos)
+    try {
+      await db
+        .updateTable('usuarios')
+        .set({ ultimo_login: new Date().toISOString() } as any)
+        .where('id', '=', empleado.id)
+        .execute();
+    } catch (error: any) {
+      const msg = String(error?.message || '').toLowerCase();
+      if (msg.includes('ultimo_login') || msg.includes('column')) {
+        console.warn('⚠️ [AUTH] No se pudo actualizar ultimo_login (columna ausente en esquema actual). Continuando login.');
+      } else {
+        throw error;
+      }
+    }
 
     return {
       token,
