@@ -55,8 +55,10 @@ const allowedOrigins = [
   // Dominios de producción en Render
   'https://montis-cloud-frontend.onrender.com',
   'https://montis-cloud-admin.onrender.com',
-  'https://montiscloud.onrender.com/', // Frontend sistema de comandas
+  'https://montiscloud.onrender.com', // Frontend sistema de comandas
 ];
+
+const normalizeOrigin = (value: string) => value.replace(/\/+$/, '');
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -64,11 +66,13 @@ app.use(cors({
     if (!origin) return callback(null, true);
     
     // Verificar si está en la lista de orígenes permitidos
+    const normalizedOrigin = normalizeOrigin(origin);
+
     const isAllowed = allowedOrigins.some(allowedOrigin => {
       if (typeof allowedOrigin === 'string') {
-        return origin === allowedOrigin;
+        return normalizedOrigin === normalizeOrigin(allowedOrigin);
       } else if (allowedOrigin instanceof RegExp) {
-        return allowedOrigin.test(origin);
+        return allowedOrigin.test(normalizedOrigin);
       }
       return false;
     });
