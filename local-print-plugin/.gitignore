@@ -17,6 +17,7 @@ env/
 venv/
 ENV/
 .venv
+.venv311
 
 # PyInstaller
 build/

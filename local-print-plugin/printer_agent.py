@@ -10,11 +10,9 @@ import subprocess
 import sys
 import threading
 import time
-import tkinter as tk
 from dataclasses import dataclass
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
-from tkinter import messagebox, ttk
 from typing import Any, Dict, Optional
 
 import requests
@@ -77,6 +75,29 @@ def setup_logger() -> logging.Logger:
     return logger
 
 
+def resolve_ca_bundle_path() -> Optional[str]:
+    candidates: list[str] = []
+
+    try:
+        import certifi  # type: ignore
+        certifi_path = certifi.where()
+        if certifi_path:
+            candidates.append(certifi_path)
+    except Exception:
+        pass
+
+    mei_path = getattr(sys, "_MEIPASS", None)
+    if mei_path:
+        candidates.append(os.path.join(mei_path, "certifi", "cacert.pem"))
+        candidates.append(os.path.join(mei_path, "cacert.pem"))
+
+    for path in candidates:
+        if path and os.path.isfile(path):
+            return path
+
+    return None
+
+
 def hostname() -> str:
     try:
         return socket.gethostname()
@@ -86,6 +107,26 @@ def hostname() -> str:
 
 def os_name() -> str:
     return f"{sys.platform}-{sys.getwindowsversion().major}.{sys.getwindowsversion().minor}" if hasattr(sys, "getwindowsversion") else sys.platform
+
+
+def show_windows_message(title: str, message: str) -> None:
+    try:
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(None, message, title, 0x10)
+    except Exception:
+        pass
+
+
+def load_tk_modules() -> tuple[Any, Any, Any]:
+    try:
+        import tkinter as tk  # type: ignore
+        from tkinter import messagebox, ttk  # type: ignore
+        return tk, messagebox, ttk
+    except Exception as error:
+        raise RuntimeError(
+            "No se pudo cargar la interfaz gráfica (tkinter). "
+            "Recompila el agente con build_exe.py usando Python 3.10-3.12."
+        ) from error
 
 
 def machine_guid() -> str:
@@ -352,6 +393,13 @@ def register_startup(logger: logging.Logger) -> None:
 
 
 def pair_device(api_base: str, logger: logging.Logger, existing_state: Optional[AgentState] = None) -> Optional[AgentState]:
+    try:
+        tk, messagebox, ttk = load_tk_modules()
+    except Exception as error:
+        logger.error(f"No se pudo iniciar UI de activación: {error}")
+        show_windows_message("Montis Printer Agent", str(error))
+        return None
+
     api_base = normalize_api_base(api_base)
     installed_printers = get_installed_printers()
     detected_printer = (
@@ -507,10 +555,16 @@ class Agent:
         self.start_time = time.time()
         self.last_heartbeat = 0.0
         self.session = requests.Session()
+        ca_bundle = resolve_ca_bundle_path()
+        if ca_bundle:
+            self.session.verify = ca_bundle
+        self._apply_session_headers()
+
+    def _apply_session_headers(self) -> None:
         self.session.headers.update(
             {
-                "x-api-key": state.api_key,
-                "x-device-fingerprint": state.fingerprint,
+                "x-api-key": self.state.api_key,
+                "x-device-fingerprint": self.state.fingerprint,
                 "Content-Type": "application/json",
             }
         )
@@ -529,15 +583,21 @@ class Agent:
         if not disk_state:
             return
 
-        if (
-            disk_state.printer_id == self.state.printer_id
-            and disk_state.api_key == self.state.api_key
-            and disk_state.fingerprint == self.state.fingerprint
-        ):
-            if disk_state.printer_name != self.state.printer_name:
-                self.logger.info(f"Impresora actualizada en configuración: {disk_state.printer_name}")
-            self.state.printer_name = disk_state.printer_name
-            self.state.api_base = normalize_api_base(disk_state.api_base)
+        # Aceptar refresco de estado si es el mismo dispositivo+impresora,
+        # incluso cuando la apiKey haya cambiado por reactivación.
+        same_device = disk_state.fingerprint == self.state.fingerprint
+        same_printer = disk_state.printer_id == self.state.printer_id
+        if same_device and same_printer:
+            api_key_changed = disk_state.api_key != self.state.api_key
+            printer_changed = disk_state.printer_name != self.state.printer_name
+            api_base_changed = normalize_api_base(disk_state.api_base) != normalize_api_base(self.state.api_base)
+
+            if api_key_changed or printer_changed or api_base_changed:
+                self.state.api_key = disk_state.api_key
+                self.state.printer_name = disk_state.printer_name
+                self.state.api_base = normalize_api_base(disk_state.api_base)
+                self._apply_session_headers()
+                self.logger.info("Configuración del agente actualizada desde estado local.")
 
     def fetch_jobs(self) -> list[Dict[str, Any]]:
         url = f"{self.state.api_base}/api/print/jobs"
@@ -671,8 +731,9 @@ def main() -> None:
             return
         save_state(state)
         register_startup(logger)
-        start_background_agent(logger)
-        return
+        # Evita relanzar otro .exe en modo onefile (puede romper rutas temporales
+        # de certifi/tkinter). Continuar en este mismo proceso como background.
+        background_mode = True
 
     if not state:
         logger.info("No hay estado guardado para ejecutar en segundo plano.")

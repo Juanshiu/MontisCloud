@@ -7,8 +7,18 @@ import PyInstaller.__main__
 import os
 import sys
 
+def validar_version_python() -> None:
+    major, minor = sys.version_info[:2]
+    if major != 3 or minor < 10 or minor > 12:
+        print("\n[ERROR] Versión de Python no recomendada para PyInstaller en este agente.")
+        print(f"Versión detectada: {major}.{minor}")
+        print("Use Python 3.10, 3.11 o 3.12 para compilar montis-printer-agent.exe")
+        raise SystemExit(1)
+
 def compilar(con_consola=False):
     """Compila printer_agent.py a ejecutable .exe usando PyInstaller"""
+
+    validar_version_python()
     
     print("=" * 60)
     print("Compilando Plugin de Impresión Montis Cloud...")
@@ -28,6 +38,23 @@ def compilar(con_consola=False):
         '--distpath=dist',                   # Carpeta de salida
         '--workpath=build',                  # Carpeta temporal
         '--hidden-import=requests',          # Asegurar imports
+        '--hidden-import=urllib3',
+        '--hidden-import=charset_normalizer',
+        '--hidden-import=idna',
+        '--hidden-import=certifi',
+        '--hidden-import=select',
+        '--hidden-import=tkinter',
+        '--hidden-import=tkinter.ttk',
+        '--hidden-import=tkinter.messagebox',
+        '--hidden-import=win32api',
+        '--hidden-import=win32con',
+        '--hidden-import=win32crypt',
+        '--hidden-import=win32print',
+        '--collect-submodules=requests',
+        '--collect-submodules=urllib3',
+        '--collect-data=certifi',
+        '--collect-data=tkinter',
+        '--collect-binaries=tkinter',
         '--noupx',                           # No comprimir con UPX (más compatible)
         '--noconfirm',                       # No pedir confirmación
     ])

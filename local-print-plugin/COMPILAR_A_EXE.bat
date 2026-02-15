@@ -31,22 +31,27 @@ pause
 echo.
 
 echo [1/3] Verificando Python...
-where python >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [ERROR] Python no esta instalado.
+set "PYTHON_EXE=%~dp0.venv311\Scripts\python.exe"
+if not exist "%PYTHON_EXE%" (
+    echo [ERROR] No se encontro .venv311 en esta carpeta.
+    echo         Ruta esperada: %PYTHON_EXE%
+    echo.
+    echo Cree el entorno con Python 3.11 y vuelva a intentar:
+    echo   py -3.11 -m venv .venv311
+    echo   .venv311\Scripts\python.exe -m pip install -r requirements.txt
     pause
     exit /b 1
 )
-echo [OK] Python detectado
+echo [OK] Python .venv311 detectado
 echo.
 
 echo [2/3] Instalando PyInstaller...
-python -m pip install --quiet --upgrade pyinstaller
+"%PYTHON_EXE%" -m pip install --quiet --upgrade pyinstaller
 echo [OK] PyInstaller listo
 echo.
 
 echo [3/3] Compilando printer_agent.py a .exe...
-python build_exe.py %argumento%
+"%PYTHON_EXE%" build_exe.py %argumento%
 
 echo.
 echo ========================================================
